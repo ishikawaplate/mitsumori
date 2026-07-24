@@ -68,6 +68,14 @@
   .best-row { background:#f0fdfa; }
   .reqno { font-family:monospace; font-size:12px; color:#4a5568; background:#edf2f7; padding:2px 7px; border-radius:5px; }
   .pill-qa { background:#fef3c7; color:#b45309; }
+  .pill-k1 { background:#dcfce7; color:#15803d; }
+  .pill-k2 { background:#fef3c7; color:#b45309; }
+  .pill-k3 { background:#e2e8f0; color:#64748b; }
+  .pill-hac { background:#1a202c; color:#fff; }
+  .row-ng { opacity:.55; }
+  .row-hac { background:#eef2ff !important; }
+  .sec-alt { margin-top:8px; padding-top:8px; border-top:1px dashed #e2e8f0; }
+  .sec-label { font-size:11px; color:#b45309; font-weight:700; margin-bottom:4px; }
   .qabox { border:1px solid #e2e8f0; border-radius:10px; padding:12px 14px; margin-bottom:10px; }
   .qabox.pending { border-color:#fcd34d; background:#fffbeb; }
   .qa-q { font-size:14px; white-space:pre-wrap; }
@@ -86,6 +94,7 @@ const GAS_URL = 'https://script.google.com/macros/s/AKfycbwvELfo5C-8cInDwsPvgDCY
 const UNITS = ['枚','本','個','式','セット','m','kg','-'];
 const DUE_OPTIONS = [[0,'本日中（至急）'],[1,'翌日'],[2,'2日後'],[3,'3日後'],[7,'1週間']];
 const VALID_OPTIONS = ['','2週間','1ヶ月','3ヶ月'];
+const KUBUN_OPTIONS = ['ご依頼どおり','同等品','対応不可'];
 
 const $ = s => document.querySelector(s);
 const app = $('#app');
@@ -145,8 +154,19 @@ const D = {
   quotes:   rid => (state.data.quotes||[]).filter(q=>norm(q.req_id)===norm(rid)),
   mei:      kid => (state.data.meisai||[]).filter(m=>norm(m.kaito_id)===norm(kid)),
   sup:      id  => (state.data.suppliers||[]).find(s=>norm(s.id)===norm(id)),
-  qa:       rid => (state.data.qa||[]).filter(x=>norm(x.req_id)===norm(rid))
+  qa:       rid => (state.data.qa||[]).filter(x=>norm(x.req_id)===norm(rid)),
+  hac:      rid => (state.data.hacchu||[]).filter(x=>norm(x.req_id)===norm(rid))
 };
+function hacOf(rid, meiId){
+  return (state.data.hacchu||[]).find(x=>norm(x.req_id)===norm(rid)&&norm(x.irai_meisai_id)===norm(meiId));
+}
+function kubunPill(k){
+  const t=norm(k);
+  if(t==='同等品') return '<span class="pill pill-k2">同等品</span>';
+  if(t==='対応不可') return '<span class="pill pill-k3">対応不可</span>';
+  if(t) return '<span class="pill pill-k1">依頼どおり</span>';
+  return '';
+}
 // 未回答の質問件数
 function unansweredQa(rid){ return D.qa(rid).filter(x=>!norm(x.answer)).length; }
 function bestOf(rid){
@@ -210,6 +230,7 @@ function renderListBody(){
           <h3>${esc(r.title)}
             ${norm(r.status)==='closed'?'<span class="pill pill-closed">締切済</span>':over?'<span class="pill pill-over">期限超過</span>':'<span class="pill pill-open">回答待ち</span>'}
             ${unansweredQa(r.req_id)?`<span class="pill pill-qa">質問${unansweredQa(r.req_id)}件</span>`:''}
+            ${D.hac(r.req_id).length?`<span class="pill pill-hac">発注済</span>`:''}
           </h3>
           <div class="meta">
             <span>${esc(r.req_id)}</span>
@@ -333,21 +354,41 @@ function renderDetail(reqId){
       if(!m) return null;
       return { sup:D.sup(q.supplier_id), m, q };
     }).filter(Boolean);
-    const min = rows.length ? Math.min(...rows.map(r=>Number(r.m.unit_price))) : null;
+
+    const ok   = rows.filter(r=>norm(r.m.kubun)!=='同等品' && norm(r.m.kubun)!=='対応不可');
+    const alt  = rows.filter(r=>norm(r.m.kubun)==='同等品');
+    const ng   = rows.filter(r=>norm(r.m.kubun)==='対応不可');
+    const minOk  = ok.length  ? Math.min(...ok.map(r=>Number(r.m.unit_price)))  : null;
+    const minAlt = alt.length ? Math.min(...alt.map(r=>Number(r.m.unit_price))) : null;
+    const hac = hacOf(reqId, it.irai_meisai_id);
+
+    const line = (r, min, tag) => {
+      const isMin = Number(r.m.unit_price)===min;
+      const isHac = hac && norm(hac.supplier_id)===norm(r.sup?.id);
+      return `<tr class="${isHac?'row-hac':(isMin&&tag==='ok'?'best-row':'')}">
+        <td>${esc(r.sup?.name||'')} ${isMin?`<span class="pill pill-best">${tag==='ok'?'最安':'同等品最安'}</span>`:''}${isHac?'<span class="pill pill-hac">発注</span>':''}</td>
+        <td class="sub">${esc(r.m.item_name)} ${kubunPill(r.m.kubun)}</td>
+        <td><b>${yen(r.m.unit_price)}</b></td>
+        <td>${esc(r.m.qty)}${esc(r.m.unit)}</td>
+        <td>${yen(Number(r.m.qty)*Number(r.m.unit_price))}</td>
+        <td>${norm(r.m.lead_days)?esc(r.m.lead_days)+'日':'—'}</td>
+        <td>${isHac
+          ? `<button class="btn btn-ghost btn-sm" onclick="delHac('${esc(hac.hacchu_id)}','${esc(reqId)}')">取消</button>`
+          : `<button class="btn btn-ghost btn-sm" onclick="adoptHac('${esc(reqId)}','${esc(it.irai_meisai_id)}','${esc(r.sup?.id)}','${esc(r.m.item_name)}',${Number(r.m.qty)||1},'${esc(r.m.unit)}',${Number(r.m.unit_price)||0})">採用</button>`}</td>
+      </tr>`;
+    };
+    const thead = `<tr><th>仕入れ先</th><th>提案品名</th><th>単価</th><th>数量</th><th>金額</th><th>納期</th><th></th></tr>`;
+
     return `<div class="itembox">
-      <h4>${esc(it.hinmei)} <span class="sub">${esc(it.shiyou)}</span></h4>
+      <h4>${esc(it.hinmei)} <span class="sub">${esc(it.shiyou)}</span>
+        ${hac?`<span class="pill pill-hac">発注済 ${esc(D.sup(hac.supplier_id)?.name||'')}</span>`:''}</h4>
       <div class="sub" style="margin-bottom:6px;">数量 ${esc(it.qty)}${esc(it.unit)}</div>
-      ${rows.length?`<table>
-        <tr><th>仕入れ先</th><th>提案品名</th><th>単価</th><th>数量</th><th>金額</th><th>納期</th></tr>
-        ${rows.map(r=>`<tr class="${Number(r.m.unit_price)===min?'best-row':''}">
-          <td>${esc(r.sup?.name||'')} ${Number(r.m.unit_price)===min?'<span class="pill pill-best">最安</span>':''}</td>
-          <td class="sub">${esc(r.m.item_name)}</td>
-          <td><b>${yen(r.m.unit_price)}</b></td>
-          <td>${esc(r.m.qty)}${esc(r.m.unit)}</td>
-          <td>${yen(Number(r.m.qty)*Number(r.m.unit_price))}</td>
-          <td>${norm(r.m.lead_days)?esc(r.m.lead_days)+'日':'—'}</td>
-        </tr>`).join('')}
-      </table>`:'<div class="sub">まだ回答がありません</div>'}
+      ${ok.length?`<table>${thead}${ok.map(r=>line(r,minOk,'ok')).join('')}</table>`:''}
+      ${alt.length?`<div class="sec-alt"><div class="sec-label">同等品でのご提案</div>
+        <table>${thead}${alt.map(r=>line(r,minAlt,'alt')).join('')}</table></div>`:''}
+      ${ng.length?`<div class="sec-alt"><div class="sec-label" style="color:#64748b;">対応不可</div>
+        <div class="sub row-ng">${ng.map(r=>esc(r.sup?.name||'')+(norm(r.m.item_name)?'（'+esc(r.m.item_name)+'）':'')).join(' / ')}</div></div>`:''}
+      ${rows.length?'':'<div class="sub">まだ回答がありません</div>'}
     </div>`;
   }).join('');
 
@@ -395,7 +436,31 @@ function renderDetail(reqId){
       </table></div>
       <h3 style="font-size:14px;margin:20px 0 8px;">質疑応答 ${unansweredQa(reqId)?`<span class="pill pill-qa">未回答 ${unansweredQa(reqId)}件</span>`:''}</h3>
       ${renderQaOrderer(reqId)}
+      ${renderHacchu(reqId)}
     </div>`;
+}
+
+function renderHacchu(reqId){
+  const list=D.hac(reqId);
+  if(!list.length) return '';
+  const total=list.reduce((s,x)=>s+Number(x.amount||0),0);
+  return `<h3 style="font-size:14px;margin:20px 0 8px;">発注内容</h3>
+    <div style="overflow-x:auto;"><table>
+      <tr><th>品目</th><th>発注先</th><th>品名</th><th>数量</th><th>単価</th><th>金額</th><th>発注日</th></tr>
+      ${list.map(x=>{
+        const it=(state.data.iraiMeisai||[]).find(m=>norm(m.irai_meisai_id)===norm(x.irai_meisai_id));
+        return `<tr>
+          <td>${esc(it?it.hinmei:'')}<br><span class="sub">${esc(it?it.shiyou:'')}</span></td>
+          <td><b>${esc(D.sup(x.supplier_id)?.name||'')}</b></td>
+          <td class="sub">${esc(x.item_name)}</td>
+          <td>${esc(x.qty)}${esc(x.unit)}</td>
+          <td>${yen(x.unit_price)}</td>
+          <td><b>${yen(x.amount)}</b></td>
+          <td class="sub">${fmtDate(x.hacchu_at)}</td>
+        </tr>`;
+      }).join('')}
+    </table></div>
+    <div class="m-total">発注合計 ${yen(total)}</div>`;
 }
 
 function renderQaOrderer(reqId){
@@ -428,6 +493,21 @@ async function sendAnswer(qid, reqId){
   const r=await apiPost({action:'answerQuestion',pass:state.pass,shitsumon_id:qid,answer:val});
   if(!r.ok){ toast('エラー: '+r.error); return; }
   toast('回答を送信しました');
+  await loadAll();
+}
+
+async function adoptHac(reqId, meiId, supId, itemName, qty, unit, price){
+  const r=await apiPost({action:'addHacchu',pass:state.pass,req_id:reqId,
+    irai_meisai_id:meiId, supplier_id:supId, item_name:itemName, qty, unit, unit_price:price});
+  if(!r.ok){ toast('エラー: '+r.error); return; }
+  toast('発注先として記録しました');
+  await loadAll();
+}
+async function delHac(hacId, reqId){
+  if(!confirm('この発注記録を取り消しますか？')) return;
+  const r=await apiPost({action:'delHacchu',pass:state.pass,hacchu_id:hacId});
+  if(!r.ok){ toast('エラー: '+r.error); return; }
+  toast('発注記録を取り消しました');
   await loadAll();
 }
 
@@ -530,8 +610,10 @@ function renderSupplierBody(){
           <span>回答日 ${fmtDate(q.responded_at)}</span>
           ${norm(q.valid_until)?`<span>有効期限 ${esc(q.valid_until)}</span>`:''}
         </div>
-        <table><tr><th>品名</th><th>数量</th><th>単価</th><th>金額</th><th>納期</th></tr>
-        ${mei.map(m=>`<tr><td>${esc(m.item_name)}</td><td>${esc(m.qty)}${esc(m.unit)}</td>
+        <table><tr><th>区分</th><th>品名</th><th>数量</th><th>単価</th><th>金額</th><th>納期</th></tr>
+        ${mei.map(m=>`<tr class="${norm(m.kubun)==='対応不可'?'row-ng':''}">
+          <td>${kubunPill(m.kubun)||'<span class="sub">—</span>'}</td>
+          <td>${esc(m.item_name)}</td><td>${esc(m.qty)}${esc(m.unit)}</td>
           <td>${yen(m.unit_price)}</td><td>${yen(Number(m.qty)*Number(m.unit_price))}</td>
           <td>${norm(m.lead_days)?esc(m.lead_days)+'日':'—'}</td></tr>`).join('')}
         </table>
@@ -546,7 +628,7 @@ function renderSupplierBody(){
     const items=S.items(r.req_id);
     if(!window._ans[r.req_id]){
       window._ans[r.req_id]={
-        lines: items.map(it=>({irai_meisai_id:it.irai_meisai_id, item_name:'', qty:it.qty||1, unit:it.unit||'枚', unit_price:'', lead_days:''})),
+        lines: items.map(it=>({irai_meisai_id:it.irai_meisai_id, kubun:'ご依頼どおり', item_name:'', qty:it.qty||1, unit:it.unit||'枚', unit_price:'', lead_days:''})),
         extra: [], note:'', valid:'1ヶ月'
       };
     }
@@ -560,7 +642,7 @@ function renderSupplierBody(){
 function renderReqForm(r, items){
   const a=window._ans[r.req_id];
   const div=document.getElementById('req-'+cssEsc(r.req_id));
-  const total=[...a.lines,...a.extra].reduce((s,l)=>s+Number(l.qty||0)*Number(l.unit_price||0),0);
+  const total=[...a.lines,...a.extra].reduce((s,l)=>norm(l.kubun)==='対応不可'?s:s+Number(l.qty||0)*Number(l.unit_price||0),0);
   const urgent = fmtDate(r.due_at) <= new Date().toISOString().slice(0,10);
 
   div.innerHTML = `
@@ -572,14 +654,20 @@ function renderReqForm(r, items){
     </div>
     ${r.note?`<div class="meta" style="margin-bottom:10px;">備考: ${esc(r.note)}</div>`:''}
     <table class="mtable">
-      <tr><th style="width:26%;">依頼品目</th><th style="width:26%;">提案品名（メーカー品番等）</th><th>数量</th><th>単価(円)</th><th>納期(日)</th></tr>
-      ${items.map((it,i)=>`<tr>
+      <tr><th style="width:22%;">依頼品目</th><th>区分</th><th style="width:22%;">提案品名（メーカー品番等）</th><th>数量</th><th>単価(円)</th><th>納期(日)</th></tr>
+      ${items.map((it,i)=>{
+        const ln=a.lines[i]||{};
+        const ng=norm(ln.kubun)==='対応不可';
+        return `<tr class="${ng?'row-ng':''}">
         <td style="font-size:13px;"><b>${esc(it.hinmei)}</b><br><span class="sub">${esc(it.shiyou)}</span></td>
-        <td><input value="${esc(a.lines[i]?.item_name||'')}" placeholder="例: 積水 DCプレート AC405AS" oninput="upAns('${r.req_id}',${i},'item_name',this.value)"></td>
-        <td><input type="number" value="${esc(a.lines[i]?.qty||'')}" style="width:62px;" oninput="upAns('${r.req_id}',${i},'qty',this.value)"></td>
-        <td><input type="number" value="${esc(a.lines[i]?.unit_price||'')}" style="width:92px;" placeholder="0" oninput="upAns('${r.req_id}',${i},'unit_price',this.value)"></td>
-        <td><input type="number" value="${esc(a.lines[i]?.lead_days||'')}" style="width:64px;" placeholder="日" oninput="upAns('${r.req_id}',${i},'lead_days',this.value)"></td>
-      </tr>`).join('')}
+        <td><select onchange="upAns('${r.req_id}',${i},'kubun',this.value)">
+          ${KUBUN_OPTIONS.map(k=>`<option ${k===(norm(ln.kubun)||'ご依頼どおり')?'selected':''}>${k}</option>`).join('')}
+        </select></td>
+        <td><input value="${esc(ln.item_name||'')}" placeholder="${ng?'—':'例: 積水 DCプレート AC405AS'}" ${ng?'disabled':''} oninput="upAns('${r.req_id}',${i},'item_name',this.value)"></td>
+        <td><input type="number" value="${esc(ln.qty||'')}" style="width:62px;" ${ng?'disabled':''} oninput="upAns('${r.req_id}',${i},'qty',this.value)"></td>
+        <td><input type="number" value="${esc(ln.unit_price||'')}" style="width:92px;" placeholder="0" ${ng?'disabled':''} oninput="upAns('${r.req_id}',${i},'unit_price',this.value)"></td>
+        <td><input type="number" value="${esc(ln.lead_days||'')}" style="width:64px;" placeholder="日" ${ng?'disabled':''} oninput="upAns('${r.req_id}',${i},'lead_days',this.value)"></td>
+      </tr>`;}).join('')}
     </table>
     <div class="sub" style="margin-top:10px;">送料・梱包費などの追加費用</div>
     <table class="mtable">
@@ -609,11 +697,19 @@ function renderReqForm(r, items){
 
 function refreshTotal(reqId){
   const a=window._ans[reqId];
-  const total=[...a.lines,...a.extra].reduce((s,l)=>s+Number(l.qty||0)*Number(l.unit_price||0),0);
+  const total=[...a.lines,...a.extra].reduce((s,l)=>norm(l.kubun)==='対応不可'?s:s+Number(l.qty||0)*Number(l.unit_price||0),0);
   const el=document.getElementById('req-'+cssEsc(reqId)).querySelector('.m-total');
   if(el) el.textContent='合計 '+yen(total);
 }
-function upAns(rid,i,f,v){ window._ans[rid].lines[i][f]=v; refreshTotal(rid); }
+function upAns(rid,i,f,v){
+  window._ans[rid].lines[i][f]=v;
+  if(f==='kubun'){
+    const r=window._sup.requests.find(x=>norm(x.req_id)===norm(rid));
+    renderReqForm(r, SD().items(rid));
+    return;
+  }
+  refreshTotal(rid);
+}
 function upExtra(rid,i,f,v){ window._ans[rid].extra[i][f]=v; refreshTotal(rid); }
 function upMeta(rid,f,v){ window._ans[rid][f]=v; }
 function addExtra(rid){
@@ -629,8 +725,13 @@ function delExtra(rid,i){
 
 async function sendQuote(reqId){
   const a=window._ans[reqId];
-  const lines=[...a.lines.filter(l=>norm(l.unit_price)!==''), ...a.extra.filter(l=>norm(l.unit_price)!=='')];
-  if(!lines.length){ toast('単価を1つ以上入力してください'); return; }
+  const lines=[
+    ...a.lines.filter(l=>norm(l.kubun)==='対応不可'||norm(l.unit_price)!==''),
+    ...a.extra.filter(l=>norm(l.unit_price)!=='')
+  ];
+  if(!lines.length){ toast('単価の入力、または区分の選択をお願いします'); return; }
+  const missing=a.lines.filter(l=>norm(l.kubun)!=='対応不可'&&norm(l.unit_price)==='');
+  if(missing.length){ toast('単価が未入力の品目があります（出せない場合は区分を「対応不可」にしてください）'); return; }
   if(!confirm('この内容で回答を送信しますか？送信後の修正はできません。')) return;
   const r=await apiPost({action:'submitQuote',key:window._sup.key,req_id:reqId,
     lines, note:a.note, valid_until:a.valid});
