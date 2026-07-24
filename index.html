@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>相見積もりシステム | 石川プレート</title>
+<title>見積もりシステム | 石川プレート</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
   body { font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",Meiryo,sans-serif; background:#f4f6f8; color:#2d3748; font-size:15px; }
@@ -111,7 +111,7 @@ function ordererInit(){
 }
 function renderLogin(msg){
   app.innerHTML = `
-    <header><div class="brand"><div class="logo">相</div><div><h1>相見積もり管理</h1><div class="sub">石川プレート</div></div></div></header>
+    <header><div class="brand"><div class="logo">見</div><div><h1>見積もり管理</h1><div class="sub">石川プレート</div></div></div></header>
     <div class="card" style="max-width:400px;margin:40px auto;">
       <label>パスコード</label><input type="password" id="pw">
       ${msg?`<div class="err">${esc(msg)}</div>`:''}
@@ -135,7 +135,7 @@ async function loadAll(){
 }
 function headerHtml(showNew){
   return `<header>
-    <div class="brand"><div class="logo">相</div><div><h1>相見積もり管理</h1><div class="sub">石川プレート 購買</div></div></div>
+    <div class="brand"><div class="logo">見</div><div><h1>見積もり管理</h1><div class="sub">石川プレート 購買</div></div></div>
     ${showNew?'<button class="btn btn-primary" onclick="renderNew()">＋ 新規依頼</button>':''}
   </header>`;
 }
@@ -493,7 +493,7 @@ async function askQ(reqId){
 function renderSupplier(){
   const d=window._sup;
   app.innerHTML = `
-    <header><div class="brand"><div class="logo">相</div><div><h1>見積もり回答</h1><div class="sub">${esc(d.supplier.name)} 様専用ページ / 石川プレート</div></div></div></header>
+    <header><div class="brand"><div class="logo">見</div><div><h1>見積もり回答</h1><div class="sub">${esc(d.supplier.name)} 様専用ページ / 石川プレート</div></div></div></header>
     <div class="search-row">
       <input id="sq" placeholder="依頼番号・品名（例: PET）・件名で検索" value="${esc(window._sq||'')}">
     </div>
