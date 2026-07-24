@@ -95,6 +95,7 @@ const UNITS = ['枚','本','個','式','セット','m','kg','-'];
 const DUE_OPTIONS = [[0,'本日中（至急）'],[1,'翌日'],[2,'2日後'],[3,'3日後'],[7,'1週間']];
 const VALID_OPTIONS = ['','2週間','1ヶ月','3ヶ月'];
 const KUBUN_OPTIONS = ['ご依頼どおり','同等品','対応不可'];
+const NOUNYU_OPTIONS = ['第一工場','第二工場','第三工場','事務所'];
 
 const $ = s => document.querySelector(s);
 const app = $('#app');
@@ -111,12 +112,20 @@ async function apiGet(p){ return (await fetch(GAS_URL+'?'+new URLSearchParams(p)
 async function apiPost(b){ return (await fetch(GAS_URL,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify(b)})).json(); }
 
 const urlKey = new URLSearchParams(location.search).get('key');
+const urlReq = new URLSearchParams(location.search).get('req');
 if (urlKey) supplierInit(urlKey); else ordererInit();
 
 /* ============ 発注側 ============ */
 function ordererInit(){
   const saved = sessionStorage.getItem('aimi_pass');
-  if(saved){ state.pass=saved; loadAll(); } else renderLogin();
+  if(saved){ state.pass=saved; loadAllThenOpen(); } else renderLogin();
+}
+async function loadAllThenOpen(){
+  app.innerHTML='<div class="loading">読み込み中...</div>';
+  const r=await apiGet({action:'getAll',pass:state.pass});
+  if(!r.ok){ sessionStorage.removeItem('aimi_pass'); renderLogin(r.error); return; }
+  state.data=r;
+  openInitialView();
 }
 function renderLogin(msg){
   app.innerHTML = `
@@ -133,7 +142,8 @@ async function tryLogin(){
   app.innerHTML='<div class="loading">確認中...</div>';
   const r=await apiGet({action:'getAll',pass:pw});
   if(!r.ok){ renderLogin(r.error); return; }
-  state.pass=pw; sessionStorage.setItem('aimi_pass',pw); state.data=r; renderList();
+  state.pass=pw; sessionStorage.setItem('aimi_pass',pw); state.data=r;
+  openInitialView();
 }
 async function loadAll(){
   app.innerHTML='<div class="loading">読み込み中...</div>';
@@ -141,6 +151,16 @@ async function loadAll(){
   if(!r.ok){ sessionStorage.removeItem('aimi_pass'); renderLogin(r.error); return; }
   state.data=r;
   if(state.view==='detail'&&state.currentReq) renderDetail(state.currentReq); else renderList();
+}
+// URLで依頼が指定されていればその詳細を開く（初回のみ）
+function openInitialView(){
+  if(urlReq && !window._reqOpened){
+    window._reqOpened=true;
+    const hit=(state.data.requests||[]).find(r=>norm(r.req_id)===norm(urlReq));
+    if(hit){ openDetail(hit.req_id); return; }
+    toast('指定された依頼が見つかりませんでした');
+  }
+  renderList();
 }
 function headerHtml(showNew){
   return `<header>
@@ -230,7 +250,7 @@ function renderListBody(){
           <h3>${esc(r.title)}
             ${norm(r.status)==='closed'?'<span class="pill pill-closed">締切済</span>':over?'<span class="pill pill-over">期限超過</span>':'<span class="pill pill-open">回答待ち</span>'}
             ${unansweredQa(r.req_id)?`<span class="pill pill-qa">質問${unansweredQa(r.req_id)}件</span>`:''}
-            ${D.hac(r.req_id).length?`<span class="pill pill-hac">発注済</span>`:''}
+            ${D.hac(r.req_id).length?`<span class="pill pill-hac">${norm(r.hacchu_info)?'発注確定':'発注検討中'}</span>`:''}
           </h3>
           <div class="meta">
             <span>${esc(r.req_id)}</span>
@@ -372,9 +392,9 @@ function renderDetail(reqId){
         <td>${esc(r.m.qty)}${esc(r.m.unit)}</td>
         <td>${yen(Number(r.m.qty)*Number(r.m.unit_price))}</td>
         <td>${norm(r.m.lead_days)?esc(r.m.lead_days)+'日':'—'}</td>
-        <td>${isHac
+        <td>${norm(req.hacchu_info) ? '' : (isHac
           ? `<button class="btn btn-ghost btn-sm" onclick="delHac('${esc(hac.hacchu_id)}','${esc(reqId)}')">取消</button>`
-          : `<button class="btn btn-ghost btn-sm" onclick="adoptHac('${esc(reqId)}','${esc(it.irai_meisai_id)}','${esc(r.sup?.id)}','${esc(r.m.item_name)}',${Number(r.m.qty)||1},'${esc(r.m.unit)}',${Number(r.m.unit_price)||0})">採用</button>`}</td>
+          : `<button class="btn btn-ghost btn-sm" onclick="adoptHac('${esc(reqId)}','${esc(it.irai_meisai_id)}','${esc(r.sup?.id)}','${esc(r.m.item_name)}',${Number(r.m.qty)||1},'${esc(r.m.unit)}',${Number(r.m.unit_price)||0})">採用</button>`)}</td>
       </tr>`;
     };
     const thead = `<tr><th>仕入れ先</th><th>提案品名</th><th>単価</th><th>数量</th><th>金額</th><th>納期</th><th></th></tr>`;
@@ -443,10 +463,16 @@ function renderDetail(reqId){
 function renderHacchu(reqId){
   const list=D.hac(reqId);
   if(!list.length) return '';
+  const req=(state.data.requests||[]).find(r=>norm(r.req_id)===norm(reqId));
   const total=list.reduce((s,x)=>s+Number(x.amount||0),0);
-  return `<h3 style="font-size:14px;margin:20px 0 8px;">発注内容</h3>
+  const confirmed=norm(req&&req.hacchu_info);
+  // 発注先の社数
+  const supIds=[...new Set(list.map(x=>norm(x.supplier_id)))];
+
+  return `<h3 style="font-size:14px;margin:20px 0 8px;">発注内容
+      ${confirmed?'<span class="pill pill-hac">確定済</span>':''}</h3>
     <div style="overflow-x:auto;"><table>
-      <tr><th>品目</th><th>発注先</th><th>品名</th><th>数量</th><th>単価</th><th>金額</th><th>発注日</th></tr>
+      <tr><th>品目</th><th>発注先</th><th>品名</th><th>数量</th><th>単価</th><th>金額</th></tr>
       ${list.map(x=>{
         const it=(state.data.iraiMeisai||[]).find(m=>norm(m.irai_meisai_id)===norm(x.irai_meisai_id));
         return `<tr>
@@ -456,11 +482,35 @@ function renderHacchu(reqId){
           <td>${esc(x.qty)}${esc(x.unit)}</td>
           <td>${yen(x.unit_price)}</td>
           <td><b>${yen(x.amount)}</b></td>
-          <td class="sub">${fmtDate(x.hacchu_at)}</td>
         </tr>`;
       }).join('')}
     </table></div>
-    <div class="m-total">発注合計 ${yen(total)}</div>`;
+    <div class="m-total">発注合計 ${yen(total)}</div>
+    ${confirmed
+      ? `<div class="best-note">${esc(req.hacchu_info)}<br>${supIds.length}社へ注文書を送信済みです。</div>`
+      : `<div class="itembox" style="margin-top:10px;">
+          <div class="sub" style="margin-bottom:8px;">注文書を送信する前に、納入先と希望納入日をご指定ください。</div>
+          <div class="grid2">
+            <div><label>納入先</label>
+              <select id="h-nou">${NOUNYU_OPTIONS.map(o=>`<option>${o}</option>`).join('')}</select></div>
+            <div><label>希望納入日</label>
+              <input type="date" id="h-date"></div>
+          </div>
+          <div style="margin-top:12px;text-align:right;">
+            <button class="btn btn-primary" onclick="confirmHac('${esc(reqId)}',${supIds.length},${list.length})">この内容で発注を確定する（${supIds.length}社へ注文書送信）</button>
+          </div>
+        </div>`}`;
+}
+
+async function confirmHac(reqId, supCount, itemCount){
+  const nou=document.getElementById('h-nou').value;
+  const date=document.getElementById('h-date').value;
+  if(!date){ toast('希望納入日を入力してください'); return; }
+  if(!confirm(`${itemCount}品目・${supCount}社へ注文書メールを送信します。\n\n納入先: ${nou}\n希望納入日: ${date}\n\n送信後は取り消せません。よろしいですか？`)) return;
+  const r=await apiPost({action:'confirmHacchu',pass:state.pass,req_id:reqId,nounyusaki:nou,nouki:date});
+  if(!r.ok){ toast('エラー: '+r.error); return; }
+  toast(r.sent+'社へ注文書を送信しました');
+  await loadAll();
 }
 
 function renderQaOrderer(reqId){
