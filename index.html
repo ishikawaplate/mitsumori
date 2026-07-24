@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>相見積もりシステム | 石川プレート</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",Meiryo,sans-serif; background:#f4f6f8; color:#2d3748; font-size:15px; }
+  .wrap { max-width:1000px; margin:0 auto; padding:20px 14px 60px; }
+  header { display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; }
+  .brand { display:flex; align-items:center; gap:10px; }
+  .logo { width:38px; height:38px; border-radius:10px; background:#0d9488; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:18px; }
+  h1 { font-size:17px; }
+  .sub { font-size:12px; color:#718096; }
+  .btn { border:none; border-radius:8px; padding:9px 16px; font-size:14px; cursor:pointer; font-weight:600; }
+  .btn-primary { background:#0d9488; color:#fff; }
+  .btn-primary:hover { background:#0f766e; }
+  .btn-ghost { background:#fff; color:#4a5568; border:1px solid #e2e8f0; }
+  .btn-ghost:hover { background:#f7fafc; }
+  .btn-sm { padding:5px 10px; font-size:12px; }
+  .btn:disabled { background:#cbd5e0; cursor:not-allowed; }
+  .card { background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:20px; margin-bottom:14px; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  input, select, textarea { width:100%; border:1px solid #cbd5e0; border-radius:8px; padding:9px 10px; font-size:14px; font-family:inherit; background:#fff; }
+  input:focus, textarea:focus, select:focus { outline:none; border-color:#0d9488; }
+  label { display:block; font-size:13px; font-weight:600; margin:12px 0 5px; color:#4a5568; }
+  .pill { display:inline-block; font-size:11px; font-weight:600; padding:2px 9px; border-radius:99px; }
+  .pill-open { background:#ccfbf1; color:#0f766e; }
+  .pill-closed { background:#e2e8f0; color:#64748b; }
+  .pill-over { background:#fee2e2; color:#dc2626; }
+  .pill-urgent { background:#dc2626; color:#fff; }
+  .pill-best { background:#0d9488; color:#fff; }
+  .toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:#1a202c; color:#fff; padding:11px 18px; border-radius:10px; font-size:13px; display:none; z-index:99; max-width:90%; }
+  .loading { text-align:center; color:#a0aec0; padding:40px 0; }
+  .err { color:#dc2626; font-size:13px; margin-top:8px; }
+  .back { background:none; border:none; color:#718096; font-size:13px; cursor:pointer; padding:0; margin-bottom:12px; }
+  .search-row { display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap; }
+  .search-row input { flex:1; min-width:200px; }
+  .tab { background:#fff; border:1px solid #e2e8f0; padding:8px 14px; border-radius:8px; font-size:13px; cursor:pointer; }
+  .tab.on { background:#1a202c; color:#fff; border-color:#1a202c; }
+  .supcheck { display:flex; align-items:center; gap:8px; border:1px solid #e2e8f0; border-radius:8px; padding:9px 12px; cursor:pointer; font-size:14px; user-select:none; }
+  .supcheck.on { border-color:#0d9488; background:#f0fdfa; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  @media(max-width:600px){ .grid2{grid-template-columns:1fr;} }
+
+  /* 一覧カード：担当を右端に */
+  .item { display:flex; align-items:center; gap:14px; background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:14px 16px; margin-bottom:10px; cursor:pointer; transition:.15s; }
+  .item:hover { border-color:#0d9488; }
+  .item-main { flex:1; min-width:0; }
+  .item h3 { font-size:15px; margin-bottom:4px; }
+  .meta { font-size:12px; color:#718096; display:flex; gap:12px; flex-wrap:wrap; }
+  .tanto-box { flex-shrink:0; text-align:center; border-left:1px solid #e2e8f0; padding-left:14px; min-width:82px; }
+  .tanto-label { font-size:10px; color:#a0aec0; letter-spacing:.05em; }
+  .tanto-name { font-size:15px; font-weight:700; color:#0f766e; }
+
+  /* テーブル */
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th { text-align:left; font-size:12px; color:#718096; padding:8px 10px; border-bottom:1px solid #e2e8f0; background:#f7fafc; }
+  td { padding:9px 10px; border-bottom:1px solid #edf2f7; }
+  .mtable input, .mtable select { padding:7px 8px; font-size:13px; }
+  .mtable td { padding:5px 4px; }
+  .m-del { background:none; border:none; color:#cbd5e0; cursor:pointer; font-size:16px; }
+  .m-del:hover { color:#dc2626; }
+  .m-total { text-align:right; font-size:15px; font-weight:700; color:#0f766e; margin-top:8px; }
+  .itembox { border:1px solid #e2e8f0; border-radius:10px; padding:12px 14px; margin-bottom:10px; background:#fcfcfd; }
+  .itembox h4 { font-size:14px; margin-bottom:2px; }
+  .best-row { background:#f0fdfa; }
+  .reqno { font-family:monospace; font-size:12px; color:#4a5568; background:#edf2f7; padding:2px 7px; border-radius:5px; }
+  .pill-qa { background:#fef3c7; color:#b45309; }
+  .qabox { border:1px solid #e2e8f0; border-radius:10px; padding:12px 14px; margin-bottom:10px; }
+  .qabox.pending { border-color:#fcd34d; background:#fffbeb; }
+  .qa-q { font-size:14px; white-space:pre-wrap; }
+  .qa-a { font-size:14px; white-space:pre-wrap; background:#f0fdfa; border-left:3px solid #0d9488; padding:8px 10px; border-radius:0 6px 6px 0; margin-top:8px; }
+  .qa-head { font-size:11px; font-weight:700; letter-spacing:.05em; margin-bottom:4px; }
+  .qa-head.q { color:#b45309; }
+  .qa-head.a { color:#0f766e; }
+</style>
+</head>
+<body>
+<div class="wrap" id="app"><div class="loading">読み込み中...</div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbwvELfo5C-8cInDwsPvgDCYfwocHyEGjVj755iFSlMB-qpR1klsJryh0dqb1NJF2bXzWg/exec';
+const UNITS = ['枚','本','個','式','セット','m','kg','-'];
+const DUE_OPTIONS = [[0,'本日中（至急）'],[1,'翌日'],[2,'2日後'],[3,'3日後'],[7,'1週間']];
+const VALID_OPTIONS = ['','2週間','1ヶ月','3ヶ月'];
+
+const $ = s => document.querySelector(s);
+const app = $('#app');
+let state = { pass:'', data:null, view:'list', currentReq:null, q:'', cat:'all', tanto:'all' };
+
+function toast(m){ const t=$('#toast'); t.textContent=m; t.style.display='block'; setTimeout(()=>t.style.display='none',3200); }
+function esc(s){ return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function fmtDate(v){ if(!v) return ''; const s=String(v); return s.includes('T')?s.slice(0,10):s; }
+function yen(n){ return '¥'+Number(n||0).toLocaleString('ja-JP'); }
+function norm(v){ return String(v??'').trim(); }
+function cssEsc(s){ return String(s).replace(/[^a-zA-Z0-9_-]/g,'_'); }
+
+async function apiGet(p){ return (await fetch(GAS_URL+'?'+new URLSearchParams(p))).json(); }
+async function apiPost(b){ return (await fetch(GAS_URL,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify(b)})).json(); }
+
+const urlKey = new URLSearchParams(location.search).get('key');
+if (urlKey) supplierInit(urlKey); else ordererInit();
+
+/* ============ 発注側 ============ */
+function ordererInit(){
+  const saved = sessionStorage.getItem('aimi_pass');
+  if(saved){ state.pass=saved; loadAll(); } else renderLogin();
+}
+function renderLogin(msg){
+  app.innerHTML = `
+    <header><div class="brand"><div class="logo">相</div><div><h1>相見積もり管理</h1><div class="sub">石川プレート</div></div></div></header>
+    <div class="card" style="max-width:400px;margin:40px auto;">
+      <label>パスコード</label><input type="password" id="pw">
+      ${msg?`<div class="err">${esc(msg)}</div>`:''}
+      <div style="margin-top:14px;text-align:right;"><button class="btn btn-primary" onclick="tryLogin()">ログイン</button></div>
+    </div>`;
+  $('#pw').addEventListener('keydown',e=>{ if(e.key==='Enter') tryLogin(); });
+}
+async function tryLogin(){
+  const pw=$('#pw').value.trim(); if(!pw) return;
+  app.innerHTML='<div class="loading">確認中...</div>';
+  const r=await apiGet({action:'getAll',pass:pw});
+  if(!r.ok){ renderLogin(r.error); return; }
+  state.pass=pw; sessionStorage.setItem('aimi_pass',pw); state.data=r; renderList();
+}
+async function loadAll(){
+  app.innerHTML='<div class="loading">読み込み中...</div>';
+  const r=await apiGet({action:'getAll',pass:state.pass});
+  if(!r.ok){ sessionStorage.removeItem('aimi_pass'); renderLogin(r.error); return; }
+  state.data=r;
+  if(state.view==='detail'&&state.currentReq) renderDetail(state.currentReq); else renderList();
+}
+function headerHtml(showNew){
+  return `<header>
+    <div class="brand"><div class="logo">相</div><div><h1>相見積もり管理</h1><div class="sub">石川プレート 購買</div></div></div>
+    ${showNew?'<button class="btn btn-primary" onclick="renderNew()">＋ 新規依頼</button>':''}
+  </header>`;
+}
+
+const D = {
+  reqItems: rid => (state.data.iraiMeisai||[]).filter(m=>norm(m.req_id)===norm(rid)),
+  quotes:   rid => (state.data.quotes||[]).filter(q=>norm(q.req_id)===norm(rid)),
+  mei:      kid => (state.data.meisai||[]).filter(m=>norm(m.kaito_id)===norm(kid)),
+  sup:      id  => (state.data.suppliers||[]).find(s=>norm(s.id)===norm(id)),
+  qa:       rid => (state.data.qa||[]).filter(x=>norm(x.req_id)===norm(rid))
+};
+// 未回答の質問件数
+function unansweredQa(rid){ return D.qa(rid).filter(x=>!norm(x.answer)).length; }
+function bestOf(rid){
+  const qs=D.quotes(rid); if(!qs.length) return null;
+  return qs.reduce((m,c)=>Number(c.unit_price)<Number(m.unit_price)?c:m);
+}
+function isOverdue(r){ return norm(r.status)==='open' && fmtDate(r.due_at) < new Date().toISOString().slice(0,10); }
+
+// 依頼に登場する担当者名の一覧（重複なし）
+function tantoList(){
+  const names=(state.data.requests||[]).map(r=>norm(r.tanto)).filter(Boolean);
+  return [...new Set(names)];
+}
+
+// 検索バー・フィルタ行（再描画しない）
+function renderList(){
+  state.view='list';
+  app.innerHTML = headerHtml(true) + `
+    <div class="search-row">
+      <input id="q" placeholder="品名・依頼番号・備考で検索" value="${esc(state.q)}">
+      <button class="tab ${state.cat==='all'?'on':''}" id="cf-all" onclick="setCat('all')">すべて</button>
+      <button class="tab ${state.cat==='resin'?'on':''}" id="cf-resin" onclick="setCat('resin')">樹脂材</button>
+      <button class="tab ${state.cat==='metal'?'on':''}" id="cf-metal" onclick="setCat('metal')">金属材</button>
+    </div>
+    <div class="search-row" id="tanto-row"></div>
+    <div id="list"></div>`;
+
+  renderTantoRow();
+  renderListBody();
+
+  const el=$('#q');
+  // 変換確定後・通常入力ともに拾うが、一覧だけを描き直す（入力欄は触らない）
+  el.addEventListener('input',()=>{ state.q=el.value; renderListBody(); });
+}
+
+function renderTantoRow(){
+  const names=tantoList();
+  if(!names.length){ $('#tanto-row').innerHTML=''; return; }
+  $('#tanto-row').innerHTML =
+    `<span class="sub" style="align-self:center;margin-right:2px;">担当</span>` +
+    `<button class="tab ${state.tanto==='all'?'on':''}" onclick="setTanto('all')">すべて</button>` +
+    names.map(n=>`<button class="tab ${state.tanto===n?'on':''}" onclick="setTanto('${esc(n)}')">${esc(n)}</button>`).join('');
+}
+
+function renderListBody(){
+  const reqs=(state.data.requests||[])
+    .filter(r=> state.cat==='all'||norm(r.category)===state.cat)
+    .filter(r=> state.tanto==='all'||norm(r.tanto)===state.tanto)
+    .filter(r=>{
+      if(!state.q) return true;
+      const items=D.reqItems(r.req_id).map(m=>m.hinmei+' '+m.shiyou).join(' ');
+      return (r.title+' '+items+' '+r.note+' '+r.req_id+' '+(r.tanto||'')).toLowerCase().includes(state.q.toLowerCase());
+    }).slice().reverse();
+
+  $('#list').innerHTML = (reqs.length?'':'<div class="loading">該当する依頼はありません</div>') +
+    reqs.map(r=>{
+      const qs=D.quotes(r.req_id), total=norm(r.supplier_ids).split(',').filter(Boolean).length;
+      const best=bestOf(r.req_id), over=isOverdue(r), items=D.reqItems(r.req_id);
+      return `<div class="item" onclick="openDetail('${esc(r.req_id)}')">
+        <div class="item-main">
+          <h3>${esc(r.title)}
+            ${norm(r.status)==='closed'?'<span class="pill pill-closed">締切済</span>':over?'<span class="pill pill-over">期限超過</span>':'<span class="pill pill-open">回答待ち</span>'}
+            ${unansweredQa(r.req_id)?`<span class="pill pill-qa">質問${unansweredQa(r.req_id)}件</span>`:''}
+          </h3>
+          <div class="meta">
+            <span>${esc(r.req_id)}</span>
+            <span>${norm(r.category)==='resin'?'樹脂材':'金属材'}</span>
+            <span>品目 ${items.length}件</span>
+            <span>回答 ${qs.length}/${total} 社</span>
+            <span>期限 ${fmtDate(r.due_at)}</span>
+            ${best?`<span style="color:#0f766e;">最安計 ${yen(best.unit_price)} / ${esc(D.sup(best.supplier_id)?.name||'')}</span>`:''}
+          </div>
+        </div>
+        ${r.tanto?`<div class="tanto-box"><div class="tanto-label">担当</div><div class="tanto-name">${esc(r.tanto)}</div></div>`:''}
+      </div>`;
+    }).join('');
+}
+
+function setCat(c){
+  state.cat=c;
+  ['all','resin','metal'].forEach(k=>$('#cf-'+k).classList.toggle('on',k===c));
+  renderListBody();
+}
+function setTanto(n){ state.tanto=n; renderTantoRow(); renderListBody(); }
+
+/* ---------- 新規依頼（複数品目） ---------- */
+function renderNew(){
+  state.view='new';
+  window._items=[{hinmei:'',shiyou:'',qty:1,unit:'枚'}];
+  window._sel=[]; window._newCat='resin';
+  app.innerHTML = headerHtml(false) + `
+    <button class="back" onclick="renderList()">← 一覧に戻る</button>
+    <div class="card">
+      <h2 style="font-size:16px;margin-bottom:6px;">見積もり依頼を作成</h2>
+      <label>材料区分</label>
+      <div class="row">
+        <button class="tab on" id="cat-resin" onclick="newCat('resin')">樹脂材</button>
+        <button class="tab" id="cat-metal" onclick="newCat('metal')">金属材</button>
+      </div>
+      <div class="grid2">
+        <div><label>件名</label><input id="f-title" placeholder="例: PET・塩ビ板 各種"></div>
+        <div><label>担当者名</label><input id="f-tanto" placeholder="例: 齋藤"></div>
+      </div>
+      <label>回答期限</label>
+      <select id="f-due">${DUE_OPTIONS.map(([v,l])=>`<option value="${v}" ${v===2?'selected':''}>${l}</option>`).join('')}</select>
+      <label>見積もり品目</label>
+      <div id="items-box"></div>
+      <div style="margin-top:6px;"><button class="btn btn-ghost btn-sm" onclick="addItem()">＋ 品目を追加</button>
+        <span class="sub" style="margin-left:8px;">材質・寸法違いもまとめて依頼できます</span></div>
+      <label>備考（任意）</label><textarea id="f-note" rows="2" placeholder="納期の希望、分納可否など"></textarea>
+      <label>送信先（見積もりを取りたい先を選択）</label>
+      <div class="grid2" id="sup-list"></div>
+      <div style="margin-top:18px;text-align:right;">
+        <button class="btn btn-ghost" onclick="renderList()">キャンセル</button>
+        <button class="btn btn-primary" id="send-btn" onclick="submitNew()">依頼を送信</button>
+      </div>
+    </div>`;
+  renderItems(); renderSupChecks();
+}
+function newCat(c){
+  window._newCat=c;
+  $('#cat-resin').classList.toggle('on',c==='resin');
+  $('#cat-metal').classList.toggle('on',c==='metal');
+  renderSupChecks();
+}
+function renderItems(){
+  $('#items-box').innerHTML = `<table class="mtable">
+    <tr><th style="width:32%;">品名</th><th style="width:38%;">仕様</th><th>数量</th><th>単位</th><th></th></tr>
+    ${window._items.map((it,i)=>`<tr>
+      <td><input value="${esc(it.hinmei)}" placeholder="例: PET板" oninput="upItem(${i},'hinmei',this.value)"></td>
+      <td><input value="${esc(it.shiyou)}" placeholder="例: t2.0 1000×2000 透明" oninput="upItem(${i},'shiyou',this.value)"></td>
+      <td><input type="number" value="${esc(it.qty)}" style="width:62px;" oninput="upItem(${i},'qty',this.value)"></td>
+      <td><select onchange="upItem(${i},'unit',this.value)">${UNITS.map(u=>`<option ${u===it.unit?'selected':''}>${u}</option>`).join('')}</select></td>
+      <td>${window._items.length>1?`<button class="m-del" onclick="delItem(${i})">×</button>`:''}</td>
+    </tr>`).join('')}
+  </table>`;
+}
+function upItem(i,f,v){ window._items[i][f]=v; }
+function addItem(){ window._items.push({hinmei:'',shiyou:'',qty:1,unit:'枚'}); renderItems(); }
+function delItem(i){ window._items.splice(i,1); renderItems(); }
+
+function renderSupChecks(){
+  const sups=(state.data.suppliers||[]).filter(s=>norm(s.category).toLowerCase()===window._newCat);
+  window._sel=[];
+  if(!sups.length){ $('#sup-list').innerHTML='<div class="sub" style="grid-column:1/-1;">この区分の仕入れ先が見つかりません。</div>'; return; }
+  $('#sup-list').innerHTML=sups.map(s=>`
+    <div class="supcheck" id="sc-${s.id}" onclick="toggleSup('${s.id}')"><span>☐</span><span>${esc(s.name)}</span></div>`).join('');
+}
+function toggleSup(id){
+  const el=$('#sc-'+id), i=window._sel.indexOf(id);
+  if(i>=0){ window._sel.splice(i,1); el.classList.remove('on'); el.querySelector('span').textContent='☐'; }
+  else { window._sel.push(id); el.classList.add('on'); el.querySelector('span').textContent='☑'; }
+}
+
+async function submitNew(){
+  const title=$('#f-title').value.trim();
+  const items=window._items.filter(it=>it.hinmei.trim()||it.shiyou.trim());
+  if(!title){ toast('件名を入力してください'); return; }
+  if(!items.length){ toast('品目を1行以上入力してください'); return; }
+  if(!window._sel.length){ toast('送信先を1社以上選んでください'); return; }
+  const b=$('#send-btn'); b.disabled=true; b.textContent='送信中...';
+  const r=await apiPost({action:'addRequest',pass:state.pass,category:window._newCat,title,
+    tanto:$('#f-tanto').value.trim(), note:$('#f-note').value.trim(),
+    dueDays:$('#f-due').value, items, supplierIds:window._sel});
+  if(!r.ok){ toast('エラー: '+r.error); b.disabled=false; b.textContent='依頼を送信'; return; }
+  toast(r.mailed+'社へ依頼メールを送信しました');
+  await loadAll();
+}
+
+/* ---------- 詳細：品目ごとに各社比較 ---------- */
+function openDetail(id){ state.currentReq=id; renderDetail(id); }
+
+function renderDetail(reqId){
+  state.view='detail';
+  const req=(state.data.requests||[]).find(r=>norm(r.req_id)===norm(reqId));
+  if(!req){ renderList(); return; }
+  const supIds=norm(req.supplier_ids).split(',').map(x=>x.trim()).filter(Boolean);
+  const items=D.reqItems(reqId), quotes=D.quotes(reqId), over=isOverdue(req);
+
+  // 品目ごとの比較ブロック
+  const itemBlocks = items.map(it=>{
+    const rows = quotes.map(q=>{
+      const m = D.mei(q.kaito_id).find(x=>norm(x.irai_meisai_id)===norm(it.irai_meisai_id));
+      if(!m) return null;
+      return { sup:D.sup(q.supplier_id), m, q };
+    }).filter(Boolean);
+    const min = rows.length ? Math.min(...rows.map(r=>Number(r.m.unit_price))) : null;
+    return `<div class="itembox">
+      <h4>${esc(it.hinmei)} <span class="sub">${esc(it.shiyou)}</span></h4>
+      <div class="sub" style="margin-bottom:6px;">数量 ${esc(it.qty)}${esc(it.unit)}</div>
+      ${rows.length?`<table>
+        <tr><th>仕入れ先</th><th>提案品名</th><th>単価</th><th>数量</th><th>金額</th><th>納期</th></tr>
+        ${rows.map(r=>`<tr class="${Number(r.m.unit_price)===min?'best-row':''}">
+          <td>${esc(r.sup?.name||'')} ${Number(r.m.unit_price)===min?'<span class="pill pill-best">最安</span>':''}</td>
+          <td class="sub">${esc(r.m.item_name)}</td>
+          <td><b>${yen(r.m.unit_price)}</b></td>
+          <td>${esc(r.m.qty)}${esc(r.m.unit)}</td>
+          <td>${yen(Number(r.m.qty)*Number(r.m.unit_price))}</td>
+          <td>${norm(r.m.lead_days)?esc(r.m.lead_days)+'日':'—'}</td>
+        </tr>`).join('')}
+      </table>`:'<div class="sub">まだ回答がありません</div>'}
+    </div>`;
+  }).join('');
+
+  // 社ごとのサマリ
+  const summary = supIds.map(sid=>{
+    const sup=D.sup(sid); if(!sup) return '';
+    const q=quotes.find(x=>norm(x.supplier_id)===sid);
+    const extra = q ? D.mei(q.kaito_id).filter(m=>!norm(m.irai_meisai_id)) : [];
+    return `<tr>
+      <td>${esc(sup.name)}</td>
+      <td>${q?`<b>${yen(q.unit_price)}</b>`:'—'}</td>
+      <td class="sub">${extra.length?extra.map(e=>esc(e.item_name)+' '+yen(e.unit_price)).join(' / '):'—'}</td>
+      <td>${q&&norm(q.valid_until)?esc(q.valid_until):'—'}</td>
+      <td class="sub">${q?esc(q.note||''):(over?'<span style="color:#dc2626;">未回答</span>':'回答待ち')}</td>
+      <td>${(!q&&norm(req.status)==='open')?`<button class="btn btn-ghost btn-sm" onclick="remind('${esc(req.req_id)}','${sid}')">督促</button>`:''}</td>
+    </tr>`;
+  }).join('');
+
+  app.innerHTML = headerHtml(false) + `
+    <button class="back" onclick="renderList()">← 一覧に戻る</button>
+    <div class="card">
+      <div class="row" style="justify-content:space-between;align-items:flex-start;">
+        <div>
+          <h2 style="font-size:16px;">${esc(req.title)}
+            ${norm(req.status)==='closed'?'<span class="pill pill-closed">締切済</span>':over?'<span class="pill pill-over">期限超過</span>':'<span class="pill pill-open">回答待ち</span>'}
+          </h2>
+          <div class="meta" style="margin-top:6px;">
+            <span class="reqno">${esc(req.req_id)}</span>
+            <span>依頼日 ${fmtDate(req.created_at)}</span><span>期限 ${fmtDate(req.due_at)}</span>
+          </div>
+          ${req.note?`<div class="meta" style="margin-top:4px;">備考: ${esc(req.note)}</div>`:''}
+        </div>
+        <div class="row" style="gap:10px;">
+          ${req.tanto?`<div class="tanto-box" style="border:none;"><div class="tanto-label">担当</div><div class="tanto-name">${esc(req.tanto)}</div></div>`:''}
+          ${norm(req.status)==='open'?`<button class="btn btn-ghost btn-sm" onclick="closeReq('${esc(req.req_id)}')">締め切る</button>`:''}
+        </div>
+      </div>
+      <h3 style="font-size:14px;margin:16px 0 8px;">品目ごとの比較</h3>
+      ${itemBlocks||'<div class="sub">品目がありません</div>'}
+      <h3 style="font-size:14px;margin:16px 0 8px;">仕入れ先ごとのまとめ</h3>
+      <div style="overflow-x:auto;">
+      <table>
+        <tr><th>仕入れ先</th><th>合計金額</th><th>その他費用</th><th>有効期限</th><th>コメント</th><th></th></tr>
+        ${summary}
+      </table></div>
+      <h3 style="font-size:14px;margin:20px 0 8px;">質疑応答 ${unansweredQa(reqId)?`<span class="pill pill-qa">未回答 ${unansweredQa(reqId)}件</span>`:''}</h3>
+      ${renderQaOrderer(reqId)}
+    </div>`;
+}
+
+function renderQaOrderer(reqId){
+  const list=D.qa(reqId);
+  if(!list.length) return '<div class="sub">まだ質問はありません。</div>';
+  return list.map(x=>{
+    const sup=D.sup(x.supplier_id);
+    const answered=norm(x.answer);
+    return `<div class="qabox ${answered?'':'pending'}">
+      <div class="qa-head q">質問 / ${esc(sup?.name||'')} ・ ${esc(x.asked_at)}</div>
+      <div class="qa-q">${esc(x.question)}</div>
+      ${answered?`
+        <div class="qa-head a" style="margin-top:10px;">回答 ・ ${esc(x.answered_at)}</div>
+        <div class="qa-a">${esc(x.answer)}</div>`
+      :`
+        <div style="margin-top:10px;">
+          <textarea id="ans-${esc(x.shitsumon_id)}" rows="2" placeholder="回答を入力（送信すると仕入れ先にメールで通知されます）"></textarea>
+          <div style="text-align:right;margin-top:6px;">
+            <button class="btn btn-primary btn-sm" onclick="sendAnswer('${esc(x.shitsumon_id)}','${esc(reqId)}')">回答を送信</button>
+          </div>
+        </div>`}
+    </div>`;
+  }).join('');
+}
+
+async function sendAnswer(qid, reqId){
+  const ta=document.getElementById('ans-'+qid);
+  const val=ta?ta.value.trim():'';
+  if(!val){ toast('回答を入力してください'); return; }
+  const r=await apiPost({action:'answerQuestion',pass:state.pass,shitsumon_id:qid,answer:val});
+  if(!r.ok){ toast('エラー: '+r.error); return; }
+  toast('回答を送信しました');
+  await loadAll();
+}
+
+async function remind(reqId,sid){
+  const r=await apiPost({action:'remind',pass:state.pass,req_id:reqId,supplier_id:sid});
+  toast(r.ok?'リマインドメールを送信しました':'エラー: '+r.error);
+}
+async function closeReq(reqId){
+  if(!confirm('この依頼を締め切りますか？')) return;
+  const r=await apiPost({action:'closeRequest',pass:state.pass,req_id:reqId});
+  if(r.ok){ toast('締め切りました'); await loadAll(); } else toast('エラー: '+r.error);
+}
+
+/* ============ 仕入れ先側 ============ */
+async function supplierInit(key){
+  app.innerHTML='<div class="loading">読み込み中...</div>';
+  const r=await apiGet({action:'supplierView',key});
+  if(!r.ok){ app.innerHTML=`<div class="card" style="max-width:420px;margin:60px auto;text-align:center;">${esc(r.error)}<br><span class="sub">石川プレートまでお問い合わせください。</span></div>`; return; }
+  window._sup={key,...r}; window._ans={};
+  if(window._sq===undefined) window._sq='';
+  renderSupplier();
+}
+
+function SD(){
+  const d=window._sup;
+  return {
+    items: rid => (d.iraiMeisai||[]).filter(m=>norm(m.req_id)===norm(rid)),
+    mei:   kid => (d.meisai||[]).filter(m=>norm(m.kaito_id)===norm(kid)),
+    qa:    rid => (d.qa||[]).filter(x=>norm(x.req_id)===norm(rid))
+  };
+}
+
+// 仕入れ先側の質疑応答ブロック
+function qaBlockSupplier(reqId){
+  const list=SD().qa(reqId);
+  return `<div style="margin-top:14px;border-top:1px solid #edf2f7;padding-top:12px;">
+    <div class="qa-head q" style="margin-bottom:6px;">石川プレートへの質問</div>
+    ${list.map(x=>`<div class="qabox ${norm(x.answer)?'':'pending'}">
+      <div class="qa-head q">質問 ・ ${esc(x.asked_at)}</div>
+      <div class="qa-q">${esc(x.question)}</div>
+      ${norm(x.answer)?`
+        <div class="qa-head a" style="margin-top:10px;">石川プレートからの回答 ・ ${esc(x.answered_at)}</div>
+        <div class="qa-a">${esc(x.answer)}</div>`
+      :'<div class="sub" style="margin-top:8px;">回答をお待ちください</div>'}
+    </div>`).join('')}
+    <textarea id="q-${esc(reqId)}" rows="2" placeholder="仕様・納期など、ご不明な点をご質問ください"></textarea>
+    <div style="text-align:right;margin-top:6px;">
+      <button class="btn btn-ghost btn-sm" onclick="askQ('${esc(reqId)}')">質問を送信</button>
+    </div>
+  </div>`;
+}
+
+async function askQ(reqId){
+  const ta=document.getElementById('q-'+reqId);
+  const val=ta?ta.value.trim():'';
+  if(!val){ toast('質問内容を入力してください'); return; }
+  const r=await apiPost({action:'askQuestion',key:window._sup.key,req_id:reqId,question:val});
+  if(!r.ok){ toast('エラー: '+r.error); return; }
+  toast('質問を送信しました。回答をお待ちください。');
+  supplierInit(window._sup.key);
+}
+
+function renderSupplier(){
+  const d=window._sup;
+  app.innerHTML = `
+    <header><div class="brand"><div class="logo">相</div><div><h1>見積もり回答</h1><div class="sub">${esc(d.supplier.name)} 様専用ページ / 石川プレート</div></div></div></header>
+    <div class="search-row">
+      <input id="sq" placeholder="依頼番号・品名（例: PET）・件名で検索" value="${esc(window._sq||'')}">
+    </div>
+    <div id="sup-body"></div>`;
+  const el=$('#sq');
+  el.addEventListener('input',()=>{ window._sq=el.value; renderSupplierBody(); });
+  renderSupplierBody();
+}
+
+function supMatch(r){
+  const q=norm(window._sq).toLowerCase();
+  if(!q) return true;
+  const items=SD().items(r.req_id).map(m=>m.hinmei+' '+m.shiyou).join(' ');
+  return (norm(r.title)+' '+items+' '+norm(r.note)+' '+norm(r.req_id)).toLowerCase().includes(q);
+}
+
+function renderSupplierBody(){
+  const d=window._sup, S=SD();
+  const openReqs=d.requests.filter(r=>norm(r.status)==='open'&&!d.quotes.some(q=>norm(q.req_id)===norm(r.req_id))&&supMatch(r));
+  const done=d.requests.filter(r=>d.quotes.some(q=>norm(q.req_id)===norm(r.req_id))&&supMatch(r));
+
+  $('#sup-body').innerHTML = `
+    <h2 style="font-size:15px;margin-bottom:10px;">ご回答をお願いする依頼（${openReqs.length}件）</h2>
+    ${openReqs.length?'':'<div class="card sub">'+(norm(window._sq)?'該当する依頼はありません。':'現在、ご回答をお願いしている依頼はありません。')+'</div>'}
+    <div id="open-reqs"></div>
+    ${done.length?'<h2 style="font-size:15px;margin:22px 0 10px;">回答済み</h2>':''}
+    ${done.map(r=>{
+      const q=d.quotes.find(x=>norm(x.req_id)===norm(r.req_id));
+      const mei=S.mei(q.kaito_id);
+      return `<div class="card" style="background:#fafafa;">
+        <h3 style="font-size:14px;">${esc(r.title)} <span class="pill pill-closed">回答済</span></h3>
+        <div class="meta" style="margin:5px 0 8px;">
+          <span class="reqno">${esc(r.req_id)}</span>
+          <span>回答日 ${fmtDate(q.responded_at)}</span>
+          ${norm(q.valid_until)?`<span>有効期限 ${esc(q.valid_until)}</span>`:''}
+        </div>
+        <table><tr><th>品名</th><th>数量</th><th>単価</th><th>金額</th><th>納期</th></tr>
+        ${mei.map(m=>`<tr><td>${esc(m.item_name)}</td><td>${esc(m.qty)}${esc(m.unit)}</td>
+          <td>${yen(m.unit_price)}</td><td>${yen(Number(m.qty)*Number(m.unit_price))}</td>
+          <td>${norm(m.lead_days)?esc(m.lead_days)+'日':'—'}</td></tr>`).join('')}
+        </table>
+        <div class="m-total">合計 ${yen(q.unit_price)}</div>
+        ${q.note?`<div class="sub" style="margin-top:6px;">コメント: ${esc(q.note)}</div>`:''}
+        ${qaBlockSupplier(r.req_id)}
+      </div>`;
+    }).join('')}`;
+
+  const box=$('#open-reqs');
+  openReqs.forEach(r=>{
+    const items=S.items(r.req_id);
+    if(!window._ans[r.req_id]){
+      window._ans[r.req_id]={
+        lines: items.map(it=>({irai_meisai_id:it.irai_meisai_id, item_name:'', qty:it.qty||1, unit:it.unit||'枚', unit_price:'', lead_days:''})),
+        extra: [], note:'', valid:'1ヶ月'
+      };
+    }
+    const div=document.createElement('div');
+    div.className='card'; div.id='req-'+cssEsc(r.req_id);
+    box.appendChild(div);
+    renderReqForm(r, items);
+  });
+}
+
+function renderReqForm(r, items){
+  const a=window._ans[r.req_id];
+  const div=document.getElementById('req-'+cssEsc(r.req_id));
+  const total=[...a.lines,...a.extra].reduce((s,l)=>s+Number(l.qty||0)*Number(l.unit_price||0),0);
+  const urgent = fmtDate(r.due_at) <= new Date().toISOString().slice(0,10);
+
+  div.innerHTML = `
+    <h3 style="font-size:15px;">${esc(r.title)} ${urgent?'<span class="pill pill-urgent">至急</span>':''}</h3>
+    <div class="meta" style="margin:6px 0 12px;">
+      <span class="reqno">${esc(r.req_id)}</span>
+      ${r.tanto?`<span>担当 ${esc(r.tanto)}</span>`:''}
+      <span>回答期限 ${fmtDate(r.due_at)}</span>
+    </div>
+    ${r.note?`<div class="meta" style="margin-bottom:10px;">備考: ${esc(r.note)}</div>`:''}
+    <table class="mtable">
+      <tr><th style="width:26%;">依頼品目</th><th style="width:26%;">提案品名（メーカー品番等）</th><th>数量</th><th>単価(円)</th><th>納期(日)</th></tr>
+      ${items.map((it,i)=>`<tr>
+        <td style="font-size:13px;"><b>${esc(it.hinmei)}</b><br><span class="sub">${esc(it.shiyou)}</span></td>
+        <td><input value="${esc(a.lines[i]?.item_name||'')}" placeholder="例: 積水 DCプレート AC405AS" oninput="upAns('${r.req_id}',${i},'item_name',this.value)"></td>
+        <td><input type="number" value="${esc(a.lines[i]?.qty||'')}" style="width:62px;" oninput="upAns('${r.req_id}',${i},'qty',this.value)"></td>
+        <td><input type="number" value="${esc(a.lines[i]?.unit_price||'')}" style="width:92px;" placeholder="0" oninput="upAns('${r.req_id}',${i},'unit_price',this.value)"></td>
+        <td><input type="number" value="${esc(a.lines[i]?.lead_days||'')}" style="width:64px;" placeholder="日" oninput="upAns('${r.req_id}',${i},'lead_days',this.value)"></td>
+      </tr>`).join('')}
+    </table>
+    <div class="sub" style="margin-top:10px;">送料・梱包費などの追加費用</div>
+    <table class="mtable">
+      ${a.extra.map((l,i)=>`<tr>
+        <td><input value="${esc(l.item_name)}" placeholder="例: 送料" oninput="upExtra('${r.req_id}',${i},'item_name',this.value)"></td>
+        <td><input type="number" value="${esc(l.qty)}" style="width:62px;" oninput="upExtra('${r.req_id}',${i},'qty',this.value)"></td>
+        <td><select onchange="upExtra('${r.req_id}',${i},'unit',this.value)">${UNITS.map(u=>`<option ${u===l.unit?'selected':''}>${u}</option>`).join('')}</select></td>
+        <td><input type="number" value="${esc(l.unit_price)}" style="width:92px;" oninput="upExtra('${r.req_id}',${i},'unit_price',this.value)"></td>
+        <td><button class="m-del" onclick="delExtra('${r.req_id}',${i})">×</button></td>
+      </tr>`).join('')}
+    </table>
+    <button class="btn btn-ghost btn-sm" onclick="addExtra('${r.req_id}')">＋ 費用を追加</button>
+    <div class="m-total">合計 ${yen(total)}</div>
+    <div class="grid2">
+      <div><label>見積有効期限</label>
+        <select onchange="upMeta('${r.req_id}','valid',this.value)">
+          ${VALID_OPTIONS.map(v=>`<option value="${v}" ${v===a.valid?'selected':''}>${v||'指定なし'}</option>`).join('')}
+        </select></div>
+      <div><label>コメント（任意）</label>
+        <input value="${esc(a.note)}" placeholder="在庫状況、条件など" oninput="upMeta('${r.req_id}','note',this.value)"></div>
+    </div>
+    <div style="margin-top:14px;text-align:right;">
+      <button class="btn btn-primary" onclick="sendQuote('${esc(r.req_id)}')">この内容で回答する</button>
+    </div>
+    ${qaBlockSupplier(r.req_id)}`;
+}
+
+function refreshTotal(reqId){
+  const a=window._ans[reqId];
+  const total=[...a.lines,...a.extra].reduce((s,l)=>s+Number(l.qty||0)*Number(l.unit_price||0),0);
+  const el=document.getElementById('req-'+cssEsc(reqId)).querySelector('.m-total');
+  if(el) el.textContent='合計 '+yen(total);
+}
+function upAns(rid,i,f,v){ window._ans[rid].lines[i][f]=v; refreshTotal(rid); }
+function upExtra(rid,i,f,v){ window._ans[rid].extra[i][f]=v; refreshTotal(rid); }
+function upMeta(rid,f,v){ window._ans[rid][f]=v; }
+function addExtra(rid){
+  window._ans[rid].extra.push({item_name:'',qty:1,unit:'式',unit_price:''});
+  const r=window._sup.requests.find(x=>norm(x.req_id)===norm(rid));
+  renderReqForm(r, SD().items(rid));
+}
+function delExtra(rid,i){
+  window._ans[rid].extra.splice(i,1);
+  const r=window._sup.requests.find(x=>norm(x.req_id)===norm(rid));
+  renderReqForm(r, SD().items(rid));
+}
+
+async function sendQuote(reqId){
+  const a=window._ans[reqId];
+  const lines=[...a.lines.filter(l=>norm(l.unit_price)!==''), ...a.extra.filter(l=>norm(l.unit_price)!=='')];
+  if(!lines.length){ toast('単価を1つ以上入力してください'); return; }
+  if(!confirm('この内容で回答を送信しますか？送信後の修正はできません。')) return;
+  const r=await apiPost({action:'submitQuote',key:window._sup.key,req_id:reqId,
+    lines, note:a.note, valid_until:a.valid});
+  if(!r.ok){ toast('エラー: '+r.error); return; }
+  toast('回答を送信しました。ありがとうございました。');
+  supplierInit(window._sup.key);
+}
+</script>
+</body>
+</html>
