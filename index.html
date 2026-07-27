@@ -387,7 +387,7 @@ function renderDetail(reqId){
       const isHac = hac && norm(hac.supplier_id)===norm(r.sup?.id);
       return `<tr class="${isHac?'row-hac':(isMin&&tag==='ok'?'best-row':'')}">
         <td>${esc(r.sup?.name||'')} ${isMin?`<span class="pill pill-best">${tag==='ok'?'最安':'同等品最安'}</span>`:''}${isHac?'<span class="pill pill-hac">発注</span>':''}</td>
-        <td class="sub">${esc(r.m.item_name)} ${kubunPill(r.m.kubun)}</td>
+        <td class="sub">${esc(norm(r.m.item_name) || (norm(r.m.kubun)!=='同等品'&&norm(r.m.kubun)!=='対応不可' ? (it.hinmei+(norm(it.shiyou)?' '+it.shiyou:'')) : ''))} ${kubunPill(r.m.kubun)}</td>
         <td><b>${yen(r.m.unit_price)}</b></td>
         <td>${esc(r.m.qty)}${esc(r.m.unit)}</td>
         <td>${yen(Number(r.m.qty)*Number(r.m.unit_price))}</td>
@@ -412,20 +412,33 @@ function renderDetail(reqId){
     </div>`;
   }).join('');
 
-  // 社ごとのサマリ
-  const summary = supIds.map(sid=>{
-    const sup=D.sup(sid); if(!sup) return '';
-    const q=quotes.find(x=>norm(x.supplier_id)===sid);
+  // 回答した各社の補足情報（有効期限・その他費用・コメント）
+  const answeredSups = supIds.filter(sid=>quotes.some(q=>norm(q.supplier_id)===sid));
+  const infoRows = answeredSups.map(sid=>{
+    const sup=D.sup(sid); const q=quotes.find(x=>norm(x.supplier_id)===sid);
     const extra = q ? D.mei(q.kaito_id).filter(m=>!norm(m.irai_meisai_id)) : [];
-    return `<tr>
-      <td>${esc(sup.name)}</td>
-      <td>${q?`<b>${yen(q.unit_price)}</b>`:'—'}</td>
-      <td class="sub">${extra.length?extra.map(e=>esc(e.item_name)+' '+yen(e.unit_price)).join(' / '):'—'}</td>
-      <td>${q&&norm(q.valid_until)?esc(q.valid_until):'—'}</td>
-      <td class="sub">${q?esc(q.note||''):(over?'<span style="color:#dc2626;">未回答</span>':'回答待ち')}</td>
-      <td>${(!q&&norm(req.status)==='open')?`<button class="btn btn-ghost btn-sm" onclick="remind('${esc(req.req_id)}','${sid}')">督促</button>`:''}</td>
-    </tr>`;
-  }).join('');
+    const bits=[];
+    if(q&&norm(q.valid_until)) bits.push('有効期限 '+esc(q.valid_until));
+    if(extra.length) bits.push('その他費用: '+extra.map(e=>esc(e.item_name)+' '+yen(e.unit_price)).join(' / '));
+    if(q&&norm(q.note)) bits.push('コメント: '+esc(q.note));
+    if(!bits.length) return '';
+    return `<div style="font-size:12px;color:#4a5568;margin-bottom:4px;"><b>${esc(sup?.name||'')}</b> ・ ${bits.join(' ・ ')}</div>`;
+  }).filter(Boolean).join('');
+  const infoHtml = infoRows ? `<div class="itembox" style="background:#fcfcfd;">${infoRows}</div>` : '';
+
+  // 未回答の仕入れ先（督促用）
+  const pending = supIds.filter(sid=>!quotes.some(q=>norm(q.supplier_id)===sid));
+  const pendingHtml = (norm(req.status)==='open' && pending.length) ? `
+    <div class="itembox" style="background:#fffbeb;border-color:#fcd34d;">
+      <div class="sec-label" style="color:#b45309;margin-bottom:6px;">未回答の仕入れ先（${pending.length}社）</div>
+      <div class="row">
+        ${pending.map(sid=>{
+          const sup=D.sup(sid); if(!sup) return '';
+          return `<span class="supcheck" style="cursor:default;">${esc(sup.name)}
+            <button class="btn btn-ghost btn-sm" style="margin-left:6px;" onclick="remind('${esc(req.req_id)}','${sid}')">督促</button></span>`;
+        }).join('')}
+      </div>
+    </div>` : '';
 
   app.innerHTML = headerHtml(false) + `
     <button class="back" onclick="renderList()">← 一覧に戻る</button>
@@ -446,14 +459,10 @@ function renderDetail(reqId){
           ${norm(req.status)==='open'?`<button class="btn btn-ghost btn-sm" onclick="closeReq('${esc(req.req_id)}')">締め切る</button>`:''}
         </div>
       </div>
+      ${pendingHtml}
       <h3 style="font-size:14px;margin:16px 0 8px;">品目ごとの比較</h3>
       ${itemBlocks||'<div class="sub">品目がありません</div>'}
-      <h3 style="font-size:14px;margin:16px 0 8px;">仕入れ先ごとのまとめ</h3>
-      <div style="overflow-x:auto;">
-      <table>
-        <tr><th>仕入れ先</th><th>合計金額</th><th>その他費用</th><th>有効期限</th><th>コメント</th><th></th></tr>
-        ${summary}
-      </table></div>
+      ${infoHtml}
       <h3 style="font-size:14px;margin:20px 0 8px;">質疑応答 ${unansweredQa(reqId)?`<span class="pill pill-qa">未回答 ${unansweredQa(reqId)}件</span>`:''}</h3>
       ${renderQaOrderer(reqId)}
       ${renderHacchu(reqId)}
@@ -713,7 +722,12 @@ function renderReqForm(r, items){
         <td><select onchange="upAns('${r.req_id}',${i},'kubun',this.value)">
           ${KUBUN_OPTIONS.map(k=>`<option ${k===(norm(ln.kubun)||'ご依頼どおり')?'selected':''}>${k}</option>`).join('')}
         </select></td>
-        <td><input value="${esc(ln.item_name||'')}" placeholder="${ng?'—':'例: 積水 DCプレート AC405AS'}" ${ng?'disabled':''} oninput="upAns('${r.req_id}',${i},'item_name',this.value)"></td>
+        <td>${(function(){
+          const ask = norm(ln.kubun)==='同等品';
+          if(ng) return '<input value="" placeholder="—" disabled>';
+          if(!ask) return '<input value="" placeholder="ご依頼どおり（'+esc(it.hinmei)+'）" disabled>';
+          return '<input value="'+esc(ln.item_name||'')+'" placeholder="例: 積水 DCプレート AC405AS" oninput="upAns(\''+r.req_id+'\','+i+',\'item_name\',this.value)">';
+        })()}</td>
         <td><input type="number" value="${esc(ln.qty||'')}" style="width:62px;" ${ng?'disabled':''} oninput="upAns('${r.req_id}',${i},'qty',this.value)"></td>
         <td><input type="number" value="${esc(ln.unit_price||'')}" style="width:92px;" placeholder="0" ${ng?'disabled':''} oninput="upAns('${r.req_id}',${i},'unit_price',this.value)"></td>
         <td><input type="number" value="${esc(ln.lead_days||'')}" style="width:64px;" placeholder="日" ${ng?'disabled':''} oninput="upAns('${r.req_id}',${i},'lead_days',this.value)"></td>
