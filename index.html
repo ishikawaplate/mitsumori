@@ -412,14 +412,42 @@ function renderDetail(reqId){
     </div>`;
   }).join('');
 
-  // 回答した各社の補足情報（有効期限・その他費用・コメント）
+  // 各社の追加提案品目（依頼になかった品目。irai_meisai_id が空）
   const answeredSups = supIds.filter(sid=>quotes.some(q=>norm(q.supplier_id)===sid));
+  const extraBlocks = answeredSups.map(sid=>{
+    const sup=D.sup(sid); const q=quotes.find(x=>norm(x.supplier_id)===sid);
+    const ex = q ? D.mei(q.kaito_id).filter(m=>!norm(m.irai_meisai_id)) : [];
+    if(!ex.length) return '';
+    return `<div style="margin-bottom:8px;">
+      <div style="font-size:13px;font-weight:600;margin-bottom:4px;">${esc(sup?.name||'')}</div>
+      <table>
+        <tr><th>品名</th><th>単価</th><th>数量</th><th>金額</th><th>納期</th><th></th></tr>
+        ${ex.map(m=>{
+          const hac=hacOf(reqId, m.meisai_id); // 追加品目は meisai_id をキーに採用
+          const isHac=!!hac;
+          return `<tr class="${isHac?'row-hac':''}">
+            <td>${esc(m.item_name)} ${isHac?'<span class="pill pill-hac">発注</span>':''}</td>
+            <td><b>${yen(m.unit_price)}</b></td>
+            <td>${esc(m.qty)}${esc(m.unit)}</td>
+            <td>${yen(Number(m.qty)*Number(m.unit_price))}</td>
+            <td>${norm(m.lead_days)?esc(m.lead_days)+'日':'—'}</td>
+            <td>${norm(req.hacchu_info)?'':(isHac
+              ? `<button class="btn btn-ghost btn-sm" onclick="delHac('${esc(hac.hacchu_id)}','${esc(reqId)}')">取消</button>`
+              : `<button class="btn btn-ghost btn-sm" onclick="adoptHac('${esc(reqId)}','${esc(m.meisai_id)}','${esc(sid)}','${esc(m.item_name)}',${Number(m.qty)||1},'${esc(m.unit)}',${Number(m.unit_price)||0})">採用</button>`)}</td>
+          </tr>`;
+        }).join('')}
+      </table>
+    </div>`;
+  }).filter(Boolean).join('');
+  const extraHtml = extraBlocks
+    ? `<h3 style="font-size:14px;margin:16px 0 8px;">各社の追加提案品目</h3>
+       <div class="itembox">${extraBlocks}</div>` : '';
+
+  // 補足情報（有効期限・コメント）
   const infoRows = answeredSups.map(sid=>{
     const sup=D.sup(sid); const q=quotes.find(x=>norm(x.supplier_id)===sid);
-    const extra = q ? D.mei(q.kaito_id).filter(m=>!norm(m.irai_meisai_id)) : [];
     const bits=[];
     if(q&&norm(q.valid_until)) bits.push('有効期限 '+esc(q.valid_until));
-    if(extra.length) bits.push('その他費用: '+extra.map(e=>esc(e.item_name)+' '+yen(e.unit_price)).join(' / '));
     if(q&&norm(q.note)) bits.push('コメント: '+esc(q.note));
     if(!bits.length) return '';
     return `<div style="font-size:12px;color:#4a5568;margin-bottom:4px;"><b>${esc(sup?.name||'')}</b> ・ ${bits.join(' ・ ')}</div>`;
@@ -462,6 +490,7 @@ function renderDetail(reqId){
       ${pendingHtml}
       <h3 style="font-size:14px;margin:16px 0 8px;">品目ごとの比較</h3>
       ${itemBlocks||'<div class="sub">品目がありません</div>'}
+      ${extraHtml}
       ${infoHtml}
       <h3 style="font-size:14px;margin:20px 0 8px;">質疑応答 ${unansweredQa(reqId)?`<span class="pill pill-qa">未回答 ${unansweredQa(reqId)}件</span>`:''}</h3>
       ${renderQaOrderer(reqId)}
@@ -481,42 +510,62 @@ function renderHacchu(reqId){
   return `<h3 style="font-size:14px;margin:20px 0 8px;">発注内容
       ${confirmed?'<span class="pill pill-hac">確定済</span>':''}</h3>
     <div style="overflow-x:auto;"><table>
-      <tr><th>品目</th><th>発注先</th><th>品名</th><th>数量</th><th>単価</th><th>金額</th></tr>
+      <tr><th>品目</th><th>発注先</th><th>品名</th><th>数量</th><th>単価</th><th>金額</th>${confirmed?'<th>納入予定日</th>':''}</tr>
       ${list.map(x=>{
         const it=(state.data.iraiMeisai||[]).find(m=>norm(m.irai_meisai_id)===norm(x.irai_meisai_id));
+        const hinmei = it ? it.hinmei : '（追加品目）';
+        const shiyou = it ? it.shiyou : '';
         return `<tr>
-          <td>${esc(it?it.hinmei:'')}<br><span class="sub">${esc(it?it.shiyou:'')}</span></td>
+          <td>${esc(hinmei)}<br><span class="sub">${esc(shiyou)}</span></td>
           <td><b>${esc(D.sup(x.supplier_id)?.name||'')}</b></td>
           <td class="sub">${esc(x.item_name)}</td>
           <td>${esc(x.qty)}${esc(x.unit)}</td>
           <td>${yen(x.unit_price)}</td>
           <td><b>${yen(x.amount)}</b></td>
+          ${confirmed?`<td>${norm(x.nounyu_yotei)?esc(x.nounyu_yotei):'<span class="sub">未登録</span>'}</td>`:''}
         </tr>`;
       }).join('')}
     </table></div>
     <div class="m-total">発注合計 ${yen(total)}</div>
     ${confirmed
-      ? `<div class="best-note">${esc(req.hacchu_info)}<br>${supIds.length}社へ注文書を送信済みです。</div>`
+      ? `<div class="best-note">${esc(req.hacchu_info)}<br>${supIds.length}社へ注文書を送信済みです。納入予定日は仕入れ先の登録で反映されます。</div>`
       : `<div class="itembox" style="margin-top:10px;">
-          <div class="sub" style="margin-bottom:8px;">注文書を送信する前に、納入先と希望納入日をご指定ください。</div>
+          <div class="sub" style="margin-bottom:8px;">注文書を送信する前に、納入先と希望納期をご指定ください。</div>
           <div class="grid2">
             <div><label>納入先</label>
               <select id="h-nou">${NOUNYU_OPTIONS.map(o=>`<option>${o}</option>`).join('')}</select></div>
-            <div><label>希望納入日</label>
-              <input type="date" id="h-date"></div>
+            <div><label>希望納期</label>
+              <select id="h-mode" onchange="toggleNouki()">
+                <option value="date">日付を指定する</option>
+                <option value="normal">通常納期（おまかせ）</option>
+              </select></div>
           </div>
+          <div id="h-date-wrap" style="margin-top:8px;"><label>希望納入日</label><input type="date" id="h-date" style="max-width:200px;"></div>
+          <div id="h-normal-note" style="display:none;margin-top:8px;" class="sub">通常納期を選ぶと、注文書には「納入予定日をご登録ください」とご案内します。登録は仕入れ先の画面から行われ、確定後に反映されます。</div>
           <div style="margin-top:12px;text-align:right;">
             <button class="btn btn-primary" onclick="confirmHac('${esc(reqId)}',${supIds.length},${list.length})">この内容で発注を確定する（${supIds.length}社へ注文書送信）</button>
           </div>
         </div>`}`;
 }
 
+function toggleNouki(){
+  const mode=document.getElementById('h-mode').value;
+  document.getElementById('h-date-wrap').style.display = mode==='normal'?'none':'block';
+  document.getElementById('h-normal-note').style.display = mode==='normal'?'block':'none';
+}
+
 async function confirmHac(reqId, supCount, itemCount){
   const nou=document.getElementById('h-nou').value;
-  const date=document.getElementById('h-date').value;
-  if(!date){ toast('希望納入日を入力してください'); return; }
-  if(!confirm(`${itemCount}品目・${supCount}社へ注文書メールを送信します。\n\n納入先: ${nou}\n希望納入日: ${date}\n\n送信後は取り消せません。よろしいですか？`)) return;
-  const r=await apiPost({action:'confirmHacchu',pass:state.pass,req_id:reqId,nounyusaki:nou,nouki:date});
+  const mode=document.getElementById('h-mode').value;
+  let nouki;
+  if(mode==='normal'){ nouki='通常納期'; }
+  else {
+    const date=document.getElementById('h-date').value;
+    if(!date){ toast('希望納入日を入力してください（通常納期の場合はプルダウンで切替）'); return; }
+    nouki=date;
+  }
+  if(!confirm(`${itemCount}品目・${supCount}社へ注文書メールを送信します。\n\n納入先: ${nou}\n希望納期: ${nouki}\n\n送信後は取り消せません。よろしいですか？`)) return;
+  const r=await apiPost({action:'confirmHacchu',pass:state.pass,req_id:reqId,nounyusaki:nou,nouki:nouki});
   if(!r.ok){ toast('エラー: '+r.error); return; }
   toast(r.sent+'社へ注文書を送信しました');
   await loadAll();
@@ -595,7 +644,8 @@ function SD(){
   return {
     items: rid => (d.iraiMeisai||[]).filter(m=>norm(m.req_id)===norm(rid)),
     mei:   kid => (d.meisai||[]).filter(m=>norm(m.kaito_id)===norm(kid)),
-    qa:    rid => (d.qa||[]).filter(x=>norm(x.req_id)===norm(rid))
+    qa:    rid => (d.qa||[]).filter(x=>norm(x.req_id)===norm(rid)),
+    hac:   rid => (d.hacchu||[]).filter(x=>norm(x.req_id)===norm(rid))
   };
 }
 
@@ -629,6 +679,16 @@ async function askQ(reqId){
   supplierInit(window._sup.key);
 }
 
+async function submitYotei(reqId){
+  const el=document.getElementById('yotei-'+reqId);
+  const val=el?el.value:'';
+  if(!val){ toast('納入予定日を入力してください'); return; }
+  const r=await apiPost({action:'submitDeliveryDate',key:window._sup.key,req_id:reqId,nounyu_yotei:val});
+  if(!r.ok){ toast('エラー: '+r.error); return; }
+  toast('納入予定日を登録しました。ありがとうございます。');
+  supplierInit(window._sup.key);
+}
+
 function renderSupplier(){
   const d=window._sup;
   app.innerHTML = `
@@ -653,11 +713,37 @@ function renderSupplierBody(){
   const d=window._sup, S=SD();
   const openReqs=d.requests.filter(r=>norm(r.status)==='open'&&!d.quotes.some(q=>norm(q.req_id)===norm(r.req_id))&&supMatch(r));
   const done=d.requests.filter(r=>d.quotes.some(q=>norm(q.req_id)===norm(r.req_id))&&supMatch(r));
+  // 発注いただいた依頼（自社に発注記録があるもの）
+  const ordered=d.requests.filter(r=>S.hac(r.req_id).length&&supMatch(r));
+
+  const orderedHtml = ordered.map(r=>{
+    const myHac=S.hac(r.req_id);
+    const yotei=norm(myHac[0]&&myHac[0].nounyu_yotei);
+    const total=myHac.reduce((s,x)=>s+Number(x.amount||0),0);
+    return `<div class="card" style="background:#eef2ff;">
+      <h3 style="font-size:14px;">${esc(r.title)} <span class="pill pill-hac">ご注文</span></h3>
+      <div class="meta" style="margin:5px 0 8px;"><span class="reqno">${esc(r.req_id)}</span></div>
+      <table><tr><th>品名</th><th>数量</th><th>単価</th><th>金額</th></tr>
+      ${myHac.map(x=>`<tr><td>${esc(x.item_name)}</td><td>${esc(x.qty)}${esc(x.unit)}</td>
+        <td>${yen(x.unit_price)}</td><td>${yen(x.amount)}</td></tr>`).join('')}
+      </table>
+      <div class="m-total">ご注文合計 ${yen(total)}</div>
+      <div style="margin-top:10px;border-top:1px solid #dbe2f0;padding-top:10px;">
+        <label>納入予定日${yotei?`（登録済: ${esc(yotei)}）`:''}</label>
+        <div class="row" style="gap:8px;">
+          <input type="date" id="yotei-${esc(r.req_id)}" style="max-width:200px;" value="${esc(yotei)}">
+          <button class="btn btn-primary btn-sm" onclick="submitYotei('${esc(r.req_id)}')">${yotei?'更新する':'登録する'}</button>
+        </div>
+        <div class="sub" style="margin-top:6px;">ご登録いただくと石川プレートへ通知されます。</div>
+      </div>
+    </div>`;
+  }).join('');
 
   $('#sup-body').innerHTML = `
     <h2 style="font-size:15px;margin-bottom:10px;">ご回答をお願いする依頼（${openReqs.length}件）</h2>
     ${openReqs.length?'':'<div class="card sub">'+(norm(window._sq)?'該当する依頼はありません。':'現在、ご回答をお願いしている依頼はありません。')+'</div>'}
     <div id="open-reqs"></div>
+    ${ordered.length?'<h2 style="font-size:15px;margin:22px 0 10px;">ご注文いただいた依頼（納入予定日のご登録）</h2>'+orderedHtml:''}
     ${done.length?'<h2 style="font-size:15px;margin:22px 0 10px;">回答済み</h2>':''}
     ${done.map(r=>{
       const q=d.quotes.find(x=>norm(x.req_id)===norm(r.req_id));
@@ -733,17 +819,19 @@ function renderReqForm(r, items){
         <td><input type="number" value="${esc(ln.lead_days||'')}" style="width:64px;" placeholder="日" ${ng?'disabled':''} oninput="upAns('${r.req_id}',${i},'lead_days',this.value)"></td>
       </tr>`;}).join('')}
     </table>
-    <div class="sub" style="margin-top:10px;">送料・梱包費などの追加費用</div>
+    <div class="sub" style="margin-top:10px;">追加品目（送料・梱包費、依頼にない規格・部材など。ここに入れたものも比較・発注の対象になります）</div>
     <table class="mtable">
+      ${a.extra.length?`<tr><th>品名</th><th>数量</th><th>単位</th><th>単価(円)</th><th>納期(日)</th><th></th></tr>`:''}
       ${a.extra.map((l,i)=>`<tr>
-        <td><input value="${esc(l.item_name)}" placeholder="例: 送料" oninput="upExtra('${r.req_id}',${i},'item_name',this.value)"></td>
+        <td><input value="${esc(l.item_name)}" placeholder="例: 送料 / A5052 t5×250×300" oninput="upExtra('${r.req_id}',${i},'item_name',this.value)"></td>
         <td><input type="number" value="${esc(l.qty)}" style="width:62px;" oninput="upExtra('${r.req_id}',${i},'qty',this.value)"></td>
         <td><select onchange="upExtra('${r.req_id}',${i},'unit',this.value)">${UNITS.map(u=>`<option ${u===l.unit?'selected':''}>${u}</option>`).join('')}</select></td>
         <td><input type="number" value="${esc(l.unit_price)}" style="width:92px;" oninput="upExtra('${r.req_id}',${i},'unit_price',this.value)"></td>
+        <td><input type="number" value="${esc(l.lead_days||'')}" style="width:64px;" placeholder="日" oninput="upExtra('${r.req_id}',${i},'lead_days',this.value)"></td>
         <td><button class="m-del" onclick="delExtra('${r.req_id}',${i})">×</button></td>
       </tr>`).join('')}
     </table>
-    <button class="btn btn-ghost btn-sm" onclick="addExtra('${r.req_id}')">＋ 費用を追加</button>
+    <button class="btn btn-ghost btn-sm" onclick="addExtra('${r.req_id}')">＋ 品目を追加</button>
     <div class="m-total">合計 ${yen(total)}</div>
     <div class="grid2">
       <div><label>見積有効期限</label>
@@ -777,7 +865,7 @@ function upAns(rid,i,f,v){
 function upExtra(rid,i,f,v){ window._ans[rid].extra[i][f]=v; refreshTotal(rid); }
 function upMeta(rid,f,v){ window._ans[rid][f]=v; }
 function addExtra(rid){
-  window._ans[rid].extra.push({item_name:'',qty:1,unit:'式',unit_price:''});
+  window._ans[rid].extra.push({item_name:'',qty:1,unit:'式',unit_price:'',lead_days:''});
   const r=window._sup.requests.find(x=>norm(x.req_id)===norm(rid));
   renderReqForm(r, SD().items(rid));
 }
