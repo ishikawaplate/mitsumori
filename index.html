@@ -113,7 +113,8 @@ async function apiPost(b){ return (await fetch(GAS_URL,{method:'POST',headers:{'
 
 const urlKey = new URLSearchParams(location.search).get('key');
 const urlReq = new URLSearchParams(location.search).get('req');
-if (urlKey) supplierInit(urlKey); else ordererInit();
+const urlGenba = new URLSearchParams(location.search).get('genba');
+if (urlKey) supplierInit(urlKey); else if (urlGenba) genbaInit(); else ordererInit();
 
 /* ============ 発注側 ============ */
 function ordererInit(){
@@ -162,10 +163,16 @@ function openInitialView(){
   }
   renderList();
 }
+function genbaPendingCount(){
+  return (state.data.requests||[]).filter(r=>norm(r.mode)==='genba'&&norm(r.status)==='pending_approval').length;
+}
 function headerHtml(showNew){
+  const pend = genbaPendingCount();
   return `<header>
     <div class="brand"><div class="logo">見</div><div><h1>見積もり管理</h1><div class="sub">石川プレート 購買</div></div></div>
     ${showNew?`<div class="row" style="gap:8px;">
+      <button class="btn btn-ghost" onclick="renderNyukaScan()">入荷消込</button>
+      <button class="btn btn-ghost" onclick="renderGenbaApproval()">現場発注承認${pend?' <span class="pill pill-urgent">'+pend+'</span>':''}</button>
       <button class="btn btn-ghost" onclick="renderDirectOrder()">直接発注</button>
       <button class="btn btn-primary" onclick="renderNew()">＋ 見積依頼</button>
     </div>`:''}
@@ -251,9 +258,11 @@ function renderListBody(){
       return `<div class="item" onclick="openDetail('${esc(r.req_id)}')">
         <div class="item-main">
           <h3>${esc(r.title)||'（無題）'}
-            ${norm(r.mode)==='hacchu'?'<span class="pill pill-hac">直接発注</span>':(norm(r.status)==='closed'?'<span class="pill pill-closed">締切済</span>':over?'<span class="pill pill-over">期限超過</span>':'<span class="pill pill-open">回答待ち</span>')}
+            ${norm(r.mode)==='genba'?'<span class="pill" style="background:#fef3c7;color:#b45309;">現場発注 承認待ち</span>':''}
+            ${norm(r.mode)==='hacchu'?'<span class="pill pill-hac">直接発注</span>':(norm(r.mode)==='genba'?'':(norm(r.status)==='closed'?'<span class="pill pill-closed">締切済</span>':over?'<span class="pill pill-over">期限超過</span>':'<span class="pill pill-open">回答待ち</span>'))}
+            ${norm(r.mode)==='hacchu'&&norm(r.source)==='genba'?'<span class="pill" style="background:#e0e7ff;color:#4338ca;">現場発注</span>':''}
             ${unansweredQa(r.req_id)?`<span class="pill pill-qa">質問${unansweredQa(r.req_id)}件</span>`:''}
-            ${(norm(r.mode)!=='hacchu'&&D.hac(r.req_id).length)?`<span class="pill pill-hac">${norm(r.hacchu_info)?'発注確定':'発注検討中'}</span>`:''}
+            ${(norm(r.mode)!=='hacchu'&&norm(r.mode)!=='genba'&&D.hac(r.req_id).length)?`<span class="pill pill-hac">${norm(r.hacchu_info)?'発注確定':'発注検討中'}</span>`:''}
           </h3>
           <div class="meta">
             <span>${esc(r.req_id)}</span>
@@ -516,11 +525,314 @@ function renderDirectDetail(req){
     </div>`;
 }
 
+/* ---------- 現場発注 承認（事務所側） ---------- */
+function genbaItemsHtml(req){
+  const items=D.reqItems(req.req_id);
+  return `<div style="overflow-x:auto;"><table>
+    <tr><th>メーカー</th><th>材質</th><th>色</th><th>板厚</th><th>サイズ</th><th>数量</th></tr>
+    ${items.map(it=>`<tr>
+      <td>${esc(it.maker)}</td><td>${esc(it.zaishitsu)}</td><td>${esc(it.iro)}</td>
+      <td>${esc(it.itaatsu)}</td><td>${esc(it.size)}</td><td>${esc(it.qty)}${esc(it.unit)}</td>
+    </tr>`).join('')}
+  </table></div>`;
+}
+function renderGenbaDetail(req){
+  const sup=D.sup(norm(req.supplier_ids));
+  const rejected = norm(req.status)==='rejected';
+  app.innerHTML = headerHtml(false) + `
+    <button class="back" onclick="renderList()">← 一覧に戻る</button>
+    <div class="card">
+      <div class="row" style="justify-content:space-between;align-items:flex-start;">
+        <div>
+          <h2 style="font-size:16px;">${esc(req.title)||'（無題）'}
+            ${rejected?'<span class="pill pill-over">却下</span>':'<span class="pill pill-qa">現場発注 承認待ち</span>'}
+          </h2>
+          <div class="meta" style="margin-top:6px;">
+            <span class="reqno">${esc(req.req_id)}</span>
+            <span>発注先候補 ${esc(sup?.name||'')}</span>
+            <span>申請日 ${fmtDate(req.created_at)}</span>
+          </div>
+          <div class="meta" style="margin-top:4px;">納入先: ${esc(req.genba_nounyu)||'—'} ／ 希望納期: ${esc(req.genba_nouki)||'—'}</div>
+          ${req.tanto?`<div class="meta" style="margin-top:4px;">現場担当: ${esc(req.tanto)}</div>`:''}
+          ${norm(req.shanai_bikou)?`<div style="margin-top:6px;font-size:12px;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:6px 10px;color:#92400e;">社内備考: ${esc(req.shanai_bikou)}</div>`:''}
+          ${rejected&&norm(req.reject_reason)?`<div style="margin-top:6px;font-size:12px;background:#fee2e2;border:1px solid #fca5a5;border-radius:6px;padding:6px 10px;color:#991b1b;">却下理由: ${esc(req.reject_reason)}</div>`:''}
+        </div>
+      </div>
+      <h3 style="font-size:14px;margin:16px 0 8px;">申請品目</h3>
+      ${genbaItemsHtml(req)}
+      ${rejected?'':`<div style="margin-top:16px;text-align:right;">
+        <button class="btn btn-ghost" onclick="rejectGenba('${esc(req.req_id)}')">却下する</button>
+        <button class="btn btn-primary" onclick="approveGenba('${esc(req.req_id)}')">承認して発注する</button>
+      </div>`}
+    </div>`;
+}
+function renderGenbaApproval(){
+  state.view='genbaApproval';
+  const pend=(state.data.requests||[]).filter(r=>norm(r.mode)==='genba'&&norm(r.status)==='pending_approval').slice().reverse();
+  app.innerHTML = headerHtml(false) + `
+    <button class="back" onclick="renderList()">← 一覧に戻る</button>
+    <h2 style="font-size:16px;margin-bottom:10px;">現場発注 承認待ち（${pend.length}件）</h2>
+    ${pend.length?'':'<div class="card sub">現在、承認待ちの現場発注はありません。</div>'}
+    ${pend.map(r=>{
+      const sup=D.sup(norm(r.supplier_ids)), items=D.reqItems(r.req_id);
+      return `<div class="item" onclick="openDetail('${esc(r.req_id)}')">
+        <div class="item-main">
+          <h3>${esc(r.title)||'（無題）'}</h3>
+          <div class="meta">
+            <span class="reqno">${esc(r.req_id)}</span>
+            <span>発注先候補 ${esc(sup?.name||'')}</span>
+            <span>品目 ${items.length}件</span>
+            <span>申請日 ${fmtDate(r.created_at)}</span>
+          </div>
+        </div>
+        ${r.tanto?`<div class="tanto-box"><div class="tanto-label">現場</div><div class="tanto-name">${esc(r.tanto)}</div></div>`:''}
+      </div>`;
+    }).join('')}`;
+}
+async function approveGenba(reqId){
+  if(!confirm('この内容で承認し、仕入れ先へ発注メール（バーコード付きラベルPDF添付）を送信します。よろしいですか？')) return;
+  const r=await apiPost({action:'approveGenbaOrder',pass:state.pass,req_id:reqId});
+  if(!r.ok){ toast('エラー: '+r.error); return; }
+  toast('承認して発注しました');
+  await loadAll();
+}
+async function rejectGenba(reqId){
+  const reason=prompt('却下理由を入力してください（現場側の画面に表示されます）');
+  if(reason===null) return;
+  if(!reason.trim()){ toast('却下理由を入力してください'); return; }
+  const r=await apiPost({action:'rejectGenbaOrder',pass:state.pass,req_id:reqId,reason:reason.trim()});
+  if(!r.ok){ toast('エラー: '+r.error); return; }
+  toast('却下しました');
+  await loadAll();
+}
+
+/* ---------- 入荷消込（バーコードスキャン） ---------- */
+function renderNyukaScan(){
+  state.view='nyuka';
+  window._nyukaLog=[];
+  app.innerHTML = headerHtml(false) + `
+    <button class="back" onclick="renderList()">← 一覧に戻る</button>
+    <div class="card">
+      <h2 style="font-size:16px;margin-bottom:6px;">入荷消込</h2>
+      <div class="sub" style="margin-bottom:10px;">現品票のバーコードをスキャンしてください（バーコードリーダーを入力欄に向けたままで結構です）</div>
+      <input id="scan-box" placeholder="ここにカーソルを置いたままスキャン" autofocus>
+    </div>
+    <div id="scan-log"></div>`;
+  const box=$('#scan-box');
+  box.focus();
+  box.addEventListener('keydown', async e=>{
+    if(e.key!=='Enter') return;
+    e.preventDefault();
+    const code=box.value.trim();
+    box.value='';
+    if(!code) return;
+    const r=await apiPost({action:'scanNyuka',pass:state.pass,barcode:code});
+    window._nyukaLog.unshift({code, r});
+    renderScanLog();
+    box.focus();
+  });
+  renderScanLog();
+}
+function renderScanLog(){
+  const el=$('#scan-log'); if(!el) return;
+  el.innerHTML = (window._nyukaLog||[]).map(({code,r})=>{
+    if(r.ok){
+      return `<div class="card" style="background:#f0fdfa;border-color:#0d9488;">
+        <div style="font-weight:700;color:#0f766e;">入荷済みにしました</div>
+        <div class="meta" style="margin-top:4px;">
+          <span>${esc(r.item_name)} ${esc(r.qty)}${esc(r.unit)}</span>
+          <span>${esc(r.supplier_name)}</span>
+          <span class="reqno">${esc(r.req_id)}</span>
+        </div>
+      </div>`;
+    }
+    return `<div class="card" style="background:#fef2f2;border-color:#fca5a5;">
+      <div style="font-weight:700;color:#dc2626;">${esc(r.error)}</div>
+      <div class="sub">読み取ったコード: ${esc(code)}</div>
+    </div>`;
+  }).join('');
+}
+
+/* ============ 現場発注（タブレット用の簡易窓口） ============ */
+function genbaInit(){
+  const saved = sessionStorage.getItem('aimi_pass_genba');
+  if(saved){ state.pass=saved; loadGenbaThenOpen(); } else renderGenbaLogin();
+}
+async function loadGenbaThenOpen(){
+  app.innerHTML='<div class="loading">読み込み中...</div>';
+  const r=await apiGet({action:'getAll',pass:state.pass});
+  if(!r.ok){ sessionStorage.removeItem('aimi_pass_genba'); renderGenbaLogin(r.error); return; }
+  state.data=r;
+  renderGenbaHome();
+}
+function renderGenbaLogin(msg){
+  app.innerHTML = `
+    <header><div class="brand"><div class="logo">見</div><div><h1>現場発注</h1><div class="sub">石川プレート</div></div></div></header>
+    <div class="card" style="max-width:400px;margin:40px auto;">
+      <label>パスコード</label><input type="password" id="gpw">
+      ${msg?`<div class="err">${esc(msg)}</div>`:''}
+      <div style="margin-top:14px;text-align:right;"><button class="btn btn-primary" onclick="tryGenbaLogin()">ログイン</button></div>
+    </div>`;
+  $('#gpw').addEventListener('keydown',e=>{ if(e.key==='Enter') tryGenbaLogin(); });
+}
+async function tryGenbaLogin(){
+  const pw=$('#gpw').value.trim(); if(!pw) return;
+  app.innerHTML='<div class="loading">確認中...</div>';
+  const r=await apiGet({action:'getAll',pass:pw});
+  if(!r.ok){ renderGenbaLogin(r.error); return; }
+  state.pass=pw; sessionStorage.setItem('aimi_pass_genba',pw); state.data=r;
+  renderGenbaHome();
+}
+async function reloadGenba(){
+  const r=await apiGet({action:'getAll',pass:state.pass});
+  if(r.ok) state.data=r;
+}
+function renderGenbaHome(){
+  state.view='genbaHome';
+  window._gitems=[{maker:'',zaishitsu:'',iro:'',itaatsu:'',size:'',qty:1,unit:'枚'}];
+  window._gcat='resin'; window._gsup=''; window._gq='';
+  app.innerHTML = `
+    <header><div class="brand"><div class="logo">見</div><div><h1>現場発注</h1><div class="sub">石川プレート</div></div></div></header>
+    <div class="card">
+      <h2 style="font-size:16px;margin-bottom:2px;">材料を発注する</h2>
+      <div class="sub" style="margin-bottom:6px;">送信すると事務所の承認後に仕入れ先へ発注されます（プールされます）。</div>
+      <label>材料区分</label>
+      <div class="row">
+        <button class="tab on" id="gcat-resin" onclick="gCat('resin')">樹脂材</button>
+        <button class="tab" id="gcat-metal" onclick="gCat('metal')">金属材</button>
+      </div>
+      <div class="grid2">
+        <div><label>件名（任意）</label><input id="g-title" placeholder="例: アクリル押出板"></div>
+        <div><label>担当者名</label><input id="g-tanto" placeholder="例: 山口"></div>
+      </div>
+      <label>発注先（1社）</label>
+      <div id="g-sup-list" class="grid2"></div>
+      <label style="margin-top:14px;">発注品目</label>
+      <div id="g-items-box"></div>
+      <div style="margin-top:6px;"><button class="btn btn-ghost btn-sm" onclick="addGItem()">＋ 品目を追加</button></div>
+      <div class="grid2" style="margin-top:8px;">
+        <div><label>納入先</label><select id="g-nou">${NOUNYU_OPTIONS.map(o=>`<option>${o}</option>`).join('')}</select></div>
+        <div><label>希望納期</label>
+          <select id="g-mode" onchange="gToggleNouki()">
+            <option value="date">日付を指定する</option>
+            <option value="normal">通常納期（おまかせ）</option>
+          </select></div>
+      </div>
+      <div id="g-date-wrap" style="margin-top:8px;"><label>希望納入日</label><input type="date" id="g-date" style="max-width:200px;"></div>
+      <div style="margin-top:18px;text-align:right;">
+        <button class="btn btn-primary" id="gsend-btn" onclick="submitGenba()">この内容で発注申請する</button>
+      </div>
+    </div>
+    <h2 style="font-size:15px;margin:20px 0 10px;">自分の申請状況</h2>
+    <div id="g-mine"></div>
+    <h2 style="font-size:15px;margin:20px 0 10px;">入荷確認</h2>
+    <div class="card">
+      <input id="g-search" placeholder="品名・仕入れ先で検索" oninput="renderGArrivals()">
+    </div>
+    <div id="g-arrivals"></div>`;
+  gCat('resin'); renderGItems(); renderGMine(); renderGArrivals();
+}
+function gCat(c){
+  window._gcat=c; window._gsup='';
+  $('#gcat-resin').classList.toggle('on',c==='resin');
+  $('#gcat-metal').classList.toggle('on',c==='metal');
+  const sups=(state.data.suppliers||[]).filter(s=>norm(s.category).toLowerCase()===c);
+  $('#g-sup-list').innerHTML = sups.length
+    ? sups.map(s=>`<div class="supcheck" id="gsc-${s.id}" onclick="gPickSup('${s.id}')"><span>○</span><span>${esc(s.name)}</span></div>`).join('')
+    : '<div class="sub" style="grid-column:1/-1;">この区分の仕入れ先が見つかりません。</div>';
+}
+function gPickSup(id){
+  window._gsup=id;
+  (state.data.suppliers||[]).forEach(s=>{
+    const el=$('#gsc-'+s.id); if(!el) return;
+    const on=s.id===id;
+    el.classList.toggle('on',on);
+    el.querySelector('span').textContent = on?'●':'○';
+  });
+}
+function renderGItems(){
+  $('#g-items-box').innerHTML = `<div style="overflow-x:auto;"><table class="mtable">
+    <tr><th>メーカー</th><th>材質</th><th>色</th><th>板厚</th><th>サイズ(mm)</th><th>数量</th><th>単位</th><th></th></tr>
+    ${window._gitems.map((it,i)=>`<tr>
+      <td><input value="${esc(it.maker)}" style="width:80px;" oninput="upGItem(${i},'maker',this.value)"></td>
+      <td><input value="${esc(it.zaishitsu)}" placeholder="アクリル押出板" style="width:110px;" oninput="upGItem(${i},'zaishitsu',this.value)"></td>
+      <td><input value="${esc(it.iro)}" placeholder="トーメー" style="width:70px;" oninput="upGItem(${i},'iro',this.value)"></td>
+      <td><input value="${esc(it.itaatsu)}" placeholder="3t" style="width:54px;" oninput="upGItem(${i},'itaatsu',this.value)"></td>
+      <td><input value="${esc(it.size)}" placeholder="1380×1830" style="width:110px;" oninput="upGItem(${i},'size',this.value)"></td>
+      <td><input type="number" value="${esc(it.qty)}" style="width:54px;" oninput="upGItem(${i},'qty',this.value)"></td>
+      <td><select onchange="upGItem(${i},'unit',this.value)">${UNITS.map(u=>`<option ${u===it.unit?'selected':''}>${u}</option>`).join('')}</select></td>
+      <td>${window._gitems.length>1?`<button class="m-del" onclick="delGItem(${i})">×</button>`:''}</td>
+    </tr>`).join('')}
+  </table></div>`;
+}
+function upGItem(i,f,v){ window._gitems[i][f]=v; }
+function addGItem(){ window._gitems.push({maker:'',zaishitsu:'',iro:'',itaatsu:'',size:'',qty:1,unit:'枚'}); renderGItems(); }
+function delGItem(i){ window._gitems.splice(i,1); renderGItems(); }
+function gToggleNouki(){
+  const m=$('#g-mode').value;
+  $('#g-date-wrap').style.display = m==='normal'?'none':'block';
+}
+async function submitGenba(){
+  if(!window._gsup){ toast('発注先を1社選んでください'); return; }
+  const items=window._gitems.filter(it=>it.maker||it.zaishitsu||it.size||it.iro);
+  if(!items.length){ toast('品目を1行以上入力してください'); return; }
+  const mode=$('#g-mode').value;
+  let nouki='通常納期';
+  if(mode==='date'){
+    const d=$('#g-date').value;
+    if(!d){ toast('希望納入日を入力してください（通常納期の場合はプルダウンで切替）'); return; }
+    nouki=d;
+  }
+  const nou=$('#g-nou').value;
+  if(!confirm('この内容で発注申請しますか？\n\n発注先: '+(D.sup(window._gsup)?.name||'')+'\n納入先: '+nou+'\n希望納期: '+nouki+'\n\n事務所の承認後に発注されます。')) return;
+  const b=$('#gsend-btn'); b.disabled=true; b.textContent='送信中...';
+  const r=await apiPost({action:'addGenbaOrder',pass:state.pass,category:window._gcat,
+    title:$('#g-title').value.trim(), tanto:$('#g-tanto').value.trim(),
+    supplierId:window._gsup, items, nounyusaki:nou, nouki});
+  if(!r.ok){ toast('エラー: '+r.error); b.disabled=false; b.textContent='この内容で発注申請する'; return; }
+  toast('発注申請を送信しました（承認待ち）');
+  await reloadGenba();
+  renderGenbaHome();
+}
+function renderGMine(){
+  const list=(state.data.requests||[]).filter(r=>norm(r.source)==='genba').slice().reverse().slice(0,15);
+  const el=$('#g-mine');
+  if(!list.length){ el.innerHTML='<div class="card sub">まだ申請はありません。</div>'; return; }
+  el.innerHTML = list.map(r=>{
+    const sup=D.sup(norm(r.supplier_ids));
+    let pill;
+    if(norm(r.status)==='rejected') pill=`<span class="pill pill-over">却下されました${r.reject_reason?'：'+esc(r.reject_reason):''}</span>`;
+    else if(norm(r.status)==='pending_approval') pill='<span class="pill pill-qa">承認待ち</span>';
+    else pill='<span class="pill pill-hac">発注済み</span>';
+    return `<div class="card">
+      <div class="row" style="justify-content:space-between;">
+        <div>
+          <div style="font-weight:700;">${esc(r.title)||'（無題）'} ${pill}</div>
+          <div class="meta" style="margin-top:4px;"><span class="reqno">${esc(r.req_id)}</span><span>発注先 ${esc(sup?.name||'')}</span><span>${fmtDate(r.created_at)}</span></div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+function renderGArrivals(){
+  const q=norm($('#g-search')?.value||'').toLowerCase();
+  const list=(state.data.hacchu||[]).filter(h=>norm(h.nyuka_status)==='入荷済み')
+    .filter(h=>!q || (norm(h.item_name)+' '+esc(D.sup(h.supplier_id)?.name||'')).toLowerCase().includes(q))
+    .slice().reverse().slice(0,30);
+  const el=$('#g-arrivals');
+  if(!list.length){ el.innerHTML='<div class="card sub">該当する入荷はありません。</div>'; return; }
+  el.innerHTML = list.map(h=>`<div class="card" style="background:#f0fdfa;">
+    <div style="font-weight:700;">${esc(h.item_name)} ${esc(h.qty)}${esc(h.unit)}</div>
+    <div class="meta" style="margin-top:4px;"><span>${esc(D.sup(h.supplier_id)?.name||'')}</span><span class="reqno">${esc(h.req_id)}</span><span>入荷 ${esc(h.nyuka_at)}</span></div>
+  </div>`).join('');
+}
+
 function renderDetail(reqId){
   state.view='detail';
   const req=(state.data.requests||[]).find(r=>norm(r.req_id)===norm(reqId));
   if(!req){ renderList(); return; }
   if(norm(req.mode)==='hacchu'){ renderDirectDetail(req); return; }
+  if(norm(req.mode)==='genba'){ renderGenbaDetail(req); return; }
   const supIds=norm(req.supplier_ids).split(',').map(x=>x.trim()).filter(Boolean);
   const items=D.reqItems(reqId), quotes=D.quotes(reqId), over=isOverdue(req);
 
