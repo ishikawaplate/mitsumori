@@ -855,7 +855,7 @@ function renderDetail(reqId){
       const isMin = Number(r.m.unit_price)===min;
       const isHac = hac && norm(hac.supplier_id)===norm(r.sup?.id);
       return `<tr class="${isHac?'row-hac':(isMin&&tag==='ok'?'best-row':'')}">
-        <td>${esc(r.sup?.name||'')} ${isMin?`<span class="pill pill-best">${tag==='ok'?'最安':'同等品最安'}</span>`:''}${isHac?'<span class="pill pill-hac">発注</span>':''}${norm(r.q&&r.q.note)?`<div style="font-size:11px;color:#94a3b8;margin-top:2px;">${esc(r.q.note)}</div>`:''}</td>
+        <td>${esc(r.sup?.name||'')} ${isMin?`<span class="pill pill-best">${tag==='ok'?'最安':'同等品最安'}</span>`:''}${isHac?'<span class="pill pill-hac">発注</span>':''}${norm(r.q&&r.q.note)?`<div style="font-size:11px;color:#94a3b8;margin-top:2px;white-space:pre-wrap;">${esc(r.q.note)}</div>`:''}</td>
         <td class="sub">${esc(norm(r.m.item_name) || (norm(r.m.kubun)!=='同等品'&&norm(r.m.kubun)!=='対応不可' ? (it.hinmei+(norm(it.shiyou)?' '+it.shiyou:'')) : ''))} ${kubunPill(r.m.kubun)}</td>
         <td><b>${yen(r.m.unit_price)}</b></td>
         <td>${esc(r.m.qty)}${esc(r.m.unit)}</td>
@@ -948,7 +948,7 @@ function renderDetail(reqId){
             <span class="reqno">${esc(req.req_id)}</span>
             <span>依頼日 ${fmtDate(req.created_at)}</span><span>期限 ${fmtDate(req.due_at)}</span>
           </div>
-          ${req.note?`<div class="meta" style="margin-top:4px;">備考: ${esc(req.note)}</div>`:''}
+          ${req.note?`<div class="meta" style="margin-top:4px;white-space:pre-wrap;">備考: ${esc(req.note)}</div>`:''}
           ${norm(req.shanai_bikou)?`<div style="margin-top:6px;font-size:12px;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:6px 10px;color:#92400e;">社内備考（事務所控え）: ${esc(req.shanai_bikou)}</div>`:''}
         </div>
         <div class="row" style="gap:10px;">
@@ -1232,7 +1232,7 @@ function renderSupplierBody(){
           <td>${norm(m.lead_days)?esc(m.lead_days)+'日':'—'}</td></tr>`).join('')}
         </table>
         <div class="m-total">合計 ${yen(q.unit_price)}</div>
-        ${q.note?`<div class="sub" style="margin-top:6px;">コメント: ${esc(q.note)}</div>`:''}
+        ${q.note?`<div class="sub" style="margin-top:6px;white-space:pre-wrap;">コメント: ${esc(q.note)}</div>`:''}
         ${qaBlockSupplier(r.req_id)}
       </div>`;
     }).join('')}`;
@@ -1266,7 +1266,7 @@ function renderReqForm(r, items){
       ${r.tanto?`<span>担当 ${esc(r.tanto)}</span>`:''}
       <span>回答期限 ${fmtDate(r.due_at)}</span>
     </div>
-    ${r.note?`<div class="meta" style="margin-bottom:10px;">備考: ${esc(r.note)}</div>`:''}
+    ${r.note?`<div class="meta" style="margin-bottom:10px;white-space:pre-wrap;">備考: ${esc(r.note)}</div>`:''}
     <table class="mtable">
       <tr><th style="width:22%;">依頼品目</th><th>区分</th><th style="width:22%;">提案品名（メーカー品番等）</th><th>数量</th><th>単価(円)</th><th>納期(日)</th></tr>
       ${items.map((it,i)=>{
@@ -1307,8 +1307,8 @@ function renderReqForm(r, items){
         <select onchange="upMeta('${r.req_id}','valid',this.value)">
           ${VALID_OPTIONS.map(v=>`<option value="${v}" ${v===a.valid?'selected':''}>${v||'指定なし'}</option>`).join('')}
         </select></div>
-      <div><label>コメント（任意）</label>
-        <input value="${esc(a.note)}" placeholder="在庫状況、条件など" oninput="upMeta('${r.req_id}','note',this.value)"></div>
+      <div><label>コメント（任意・複数行OK）</label>
+        <textarea rows="3" placeholder="在庫状況、条件など（改行できます）" oninput="upMeta('${r.req_id}','note',this.value)">${esc(a.note)}</textarea></div>
     </div>
     <div style="margin-top:14px;text-align:right;">
       <button class="btn btn-primary" onclick="sendQuote('${esc(r.req_id)}')">この内容で回答する</button>
