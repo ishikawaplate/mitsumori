@@ -988,13 +988,16 @@ function renderHacchu(reqId){
           <td>${esc(hinmei)}<br><span class="sub">${esc(shiyou)}</span></td>
           <td><b>${esc(D.sup(x.supplier_id)?.name||'')}</b></td>
           <td class="sub">${esc(x.item_name)}</td>
-          <td>${esc(x.qty)}${esc(x.unit)}</td>
+          <td>${confirmed
+            ? `${esc(x.qty)}${esc(x.unit)}`
+            : `<input type="number" min="0" step="1" value="${esc(x.qty)}" style="width:64px;" onchange="updateHacQty('${esc(x.hacchu_id)}',this.value,'${esc(reqId)}')">${esc(x.unit)}`}</td>
           <td>${yen(x.unit_price)}</td>
           <td><b>${yen(x.amount)}</b></td>
           ${confirmed?`<td>${norm(x.nounyu_yotei)?esc(x.nounyu_yotei):'<span class="sub">未登録</span>'}</td>`:''}
         </tr>`;
       }).join('')}
     </table></div>
+    ${confirmed?'':'<div class="sub" style="margin-top:4px;">数量は入力欄を直接書き換えると変更できます（発注確定前のみ）。</div>'}
     <div class="m-total">発注合計 ${yen(total)}</div>
     ${confirmed
       ? `<div class="best-note">${esc(req.hacchu_info)}<br>${supIds.length}社へ注文書を送信済みです。納入予定日は仕入れ先の登録で反映されます。</div>`
@@ -1011,10 +1014,17 @@ function renderHacchu(reqId){
           </div>
           <div id="h-date-wrap" style="margin-top:8px;"><label>希望納入日</label><input type="date" id="h-date" style="max-width:200px;"></div>
           <div id="h-normal-note" style="display:none;margin-top:8px;" class="sub">通常納期を選ぶと、注文書には「納入予定日をご登録ください」とご案内します。登録は仕入れ先の画面から行われ、確定後に反映されます。</div>
+          <div style="margin-top:8px;"><label>備考（任意・注文書に記載されます）</label><textarea id="h-bikou" rows="2" placeholder="分納希望、荷姿指定など"></textarea></div>
           <div style="margin-top:12px;text-align:right;">
             <button class="btn btn-primary" onclick="confirmHac('${esc(reqId)}',${supIds.length},${list.length})">この内容で発注を確定する（${supIds.length}社へ注文書送信）</button>
           </div>
         </div>`}`;
+}
+
+async function updateHacQty(hacId, qty, reqId){
+  const r=await apiPost({action:'updateHacchuQty',pass:state.pass,hacchu_id:hacId,qty});
+  if(!r.ok){ toast('エラー: '+r.error); }
+  await loadAll();
 }
 
 function toggleNouki(){
@@ -1034,7 +1044,8 @@ async function confirmHac(reqId, supCount, itemCount){
     nouki=date;
   }
   if(!confirm(`${itemCount}品目・${supCount}社へ注文書メールを送信します。\n\n納入先: ${nou}\n希望納期: ${nouki}\n\n送信後は取り消せません。よろしいですか？`)) return;
-  const r=await apiPost({action:'confirmHacchu',pass:state.pass,req_id:reqId,nounyusaki:nou,nouki:nouki});
+  const bikou=document.getElementById('h-bikou').value.trim();
+  const r=await apiPost({action:'confirmHacchu',pass:state.pass,req_id:reqId,nounyusaki:nou,nouki:nouki,bikou:bikou});
   if(!r.ok){ toast('エラー: '+r.error); return; }
   toast(r.sent+'社へ注文書を送信しました');
   await loadAll();
