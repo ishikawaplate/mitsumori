@@ -405,6 +405,8 @@ function renderDirectOrder(){
           </select></div>
       </div>
       <div id="d-date-wrap" style="margin-top:8px;"><label>希望納入日</label><input type="date" id="d-date" style="max-width:200px;"></div>
+      <label>備考（仕入れ先の注文メールに記載されます）</label>
+      <textarea id="d-note" rows="2" placeholder="例: 荷姿指定、分納希望など"></textarea>
       <label>社内備考（事務所控え・仕入れ先には表示されません）</label>
       <textarea id="d-bikou" rows="2" placeholder="例: 第二工場・○○さん使用分 など" style="background:#fffef5;"></textarea>
       <div style="margin-top:18px;text-align:right;">
@@ -472,7 +474,7 @@ async function submitDirect(){
   const b=$('#dsend-btn'); b.disabled=true; b.textContent='送信中...';
   const r=await apiPost({action:'addDirectOrder',pass:state.pass,category:window._dcat,
     title:$('#d-title').value.trim(), tanto:$('#d-tanto').value.trim(),
-    shanai_bikou:$('#d-bikou').value.trim(), supplierId:window._dsup,
+    note:$('#d-note').value.trim(), shanai_bikou:$('#d-bikou').value.trim(), supplierId:window._dsup,
     items, nounyusaki:nou, nouki});
   if(!r.ok){ toast('エラー: '+r.error); b.disabled=false; b.textContent='この内容で発注する'; return; }
   toast('発注書を送信しました');
@@ -487,7 +489,7 @@ function renderDirectDetail(req){
   const hac=D.hac(reqId);
   const items=D.reqItems(reqId);
   const total=hac.reduce((s,x)=>s+Number(x.amount||0),0);
-  const yotei=norm(hac[0]&&hac[0].nounyu_yotei);
+  const yotei=fmtDate(hac[0]&&hac[0].nounyu_yotei);
   app.innerHTML = headerHtml(false) + `
     <button class="back" onclick="renderList()">← 一覧に戻る</button>
     <div class="card">
@@ -500,6 +502,7 @@ function renderDirectDetail(req){
             <span>発注日 ${fmtDate(req.created_at)}</span>
           </div>
           <div class="meta" style="margin-top:4px;">${esc(req.hacchu_info)}</div>
+          ${req.note?`<div class="meta" style="margin-top:4px;white-space:pre-wrap;">備考（仕入れ先へ表示）: ${esc(req.note)}</div>`:''}
           ${norm(req.shanai_bikou)?`<div style="margin-top:6px;font-size:12px;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:6px 10px;color:#92400e;">社内備考（事務所控え）: ${esc(req.shanai_bikou)}</div>`:''}
         </div>
         ${req.tanto?`<div class="tanto-box" style="border:none;"><div class="tanto-label">担当</div><div class="tanto-name">${esc(req.tanto)}</div></div>`:''}
@@ -521,6 +524,9 @@ function renderDirectDetail(req){
       ${total?`<div class="m-total">合計 ${yen(total)}</div>`:''}
       <div class="best-note" style="margin-top:12px;">
         発注書を送信済みです。納入予定日: ${yotei?`<b>${esc(yotei)}</b>`:'<span class="sub">仕入れ先の登録待ち</span>'}
+      </div>
+      <div style="margin-top:10px;text-align:right;">
+        <button class="btn btn-ghost btn-sm" onclick="printOrderReceipt('${esc(reqId)}')">🖨 控えを印刷する</button>
       </div>
     </div>`;
 }
@@ -993,14 +999,17 @@ function renderHacchu(reqId){
             : `<input type="number" min="0" step="1" value="${esc(x.qty)}" style="width:64px;" onchange="updateHacQty('${esc(x.hacchu_id)}',this.value,'${esc(reqId)}')">${esc(x.unit)}`}</td>
           <td>${yen(x.unit_price)}</td>
           <td><b>${yen(x.amount)}</b></td>
-          ${confirmed?`<td>${norm(x.nounyu_yotei)?esc(x.nounyu_yotei):'<span class="sub">未登録</span>'}</td>`:''}
+          ${confirmed?`<td>${norm(x.nounyu_yotei)?esc(fmtDate(x.nounyu_yotei)):'<span class="sub">未登録</span>'}</td>`:''}
         </tr>`;
       }).join('')}
     </table></div>
     ${confirmed?'':'<div class="sub" style="margin-top:4px;">数量は入力欄を直接書き換えると変更できます（発注確定前のみ）。</div>'}
     <div class="m-total">発注合計 ${yen(total)}</div>
     ${confirmed
-      ? `<div class="best-note">${esc(req.hacchu_info)}<br>${supIds.length}社へ注文書を送信済みです。納入予定日は仕入れ先の登録で反映されます。</div>`
+      ? `<div class="best-note">${esc(req.hacchu_info)}<br>${supIds.length}社へ注文書を送信済みです。納入予定日は仕入れ先の登録で反映されます。</div>
+         <div style="margin-top:10px;text-align:right;">
+           <button class="btn btn-ghost btn-sm" onclick="printOrderReceipt('${esc(reqId)}')">🖨 控えを印刷する</button>
+         </div>`
       : `<div class="itembox" style="margin-top:10px;">
           <div class="sub" style="margin-bottom:8px;">注文書を送信する前に、納入先と希望納期をご指定ください。</div>
           <div class="grid2">
@@ -1049,6 +1058,47 @@ async function confirmHac(reqId, supCount, itemCount){
   if(!r.ok){ toast('エラー: '+r.error); return; }
   toast(r.sent+'社へ注文書を送信しました');
   await loadAll();
+}
+
+function printOrderReceipt(reqId){
+  const req=(state.data.requests||[]).find(r=>norm(r.req_id)===norm(reqId));
+  if(!req){ toast('発注情報が見つかりません'); return; }
+  const hac=D.hac(reqId);
+  const items=D.reqItems(reqId);
+  const sup=D.sup(norm(req.supplier_ids));
+  const total=hac.reduce((s,x)=>s+Number(x.amount||0),0);
+  const supNames=[...new Set(hac.map(x=>D.sup(x.supplier_id)?.name).filter(Boolean))];
+  const rows = items.length ? items.map(it=>{
+    const h=hac.find(x=>norm(x.irai_meisai_id)===norm(it.irai_meisai_id));
+    return `<tr><td>${esc(it.maker)}</td><td>${esc(it.zaishitsu)}</td><td>${esc(it.iro)}</td><td>${esc(it.itaatsu)}</td><td>${esc(it.size)}</td>
+      <td>${esc(it.qty)}${esc(it.unit)}</td><td>${h?yen(h.unit_price):'—'}</td><td>${h?yen(h.amount):'—'}</td>
+      <td>${esc(D.sup(h&&h.supplier_id)?.name||sup?.name||'')}</td></tr>`;
+  }).join('') : hac.map(x=>`<tr><td colspan="5">${esc(x.item_name)}</td><td>${esc(x.qty)}${esc(x.unit)}</td>
+    <td>${yen(x.unit_price)}</td><td>${yen(x.amount)}</td><td>${esc(D.sup(x.supplier_id)?.name||'')}</td></tr>`).join('');
+  const w=window.open('','_blank');
+  if(!w){ toast('ポップアップがブロックされました。ブラウザの設定をご確認ください。'); return; }
+  w.document.write(`<html><head><title>発注控え ${esc(reqId)}</title><style>
+    body{font-family:sans-serif;padding:24px;color:#111;}
+    h1{font-size:18px;margin-bottom:6px;}
+    table{width:100%;border-collapse:collapse;margin-top:12px;font-size:12px;}
+    th,td{border:1px solid #999;padding:5px 8px;text-align:left;}
+    th{background:#eee;}
+    .meta{font-size:12px;color:#444;margin:2px 0;white-space:pre-wrap;}
+    .total{text-align:right;font-weight:bold;margin-top:10px;font-size:14px;}
+  </style></head><body>
+    <h1>発 注 控 え</h1>
+    <div class="meta">発注番号: ${esc(reqId)}　件名: ${esc(req.title)||''}</div>
+    <div class="meta">発注先: ${esc(supNames.join('、')||sup?.name||'')}　発注日: ${esc(fmtDate(req.created_at))}</div>
+    ${req.tanto?`<div class="meta">担当: ${esc(req.tanto)}</div>`:''}
+    ${req.hacchu_info?`<div class="meta">${esc(req.hacchu_info)}</div>`:''}
+    ${req.note?`<div class="meta">備考: ${esc(req.note)}</div>`:''}
+    ${norm(req.shanai_bikou)?`<div class="meta">社内備考: ${esc(req.shanai_bikou)}</div>`:''}
+    <table><tr><th>メーカー</th><th>材質</th><th>色</th><th>板厚</th><th>サイズ</th><th>数量</th><th>単価</th><th>金額</th><th>発注先</th></tr>${rows}</table>
+    <div class="total">合計 ${yen(total)}</div>
+  </body></html>`);
+  w.document.close();
+  w.focus();
+  setTimeout(()=>{ try{ w.print(); }catch(e){} }, 300);
 }
 
 function renderQaOrderer(reqId){
@@ -1198,11 +1248,12 @@ function renderSupplierBody(){
 
   const orderedHtml = ordered.map(r=>{
     const myHac=S.hac(r.req_id);
-    const yotei=norm(myHac[0]&&myHac[0].nounyu_yotei);
+    const yotei=fmtDate(myHac[0]&&myHac[0].nounyu_yotei);
     const total=myHac.reduce((s,x)=>s+Number(x.amount||0),0);
     return `<div class="card" style="background:#eef2ff;">
       <h3 style="font-size:14px;">${esc(r.title)} <span class="pill pill-hac">ご注文</span></h3>
       <div class="meta" style="margin:5px 0 8px;"><span class="reqno">${esc(r.req_id)}</span></div>
+      ${r.note?`<div class="meta" style="margin-bottom:8px;white-space:pre-wrap;">備考: ${esc(r.note)}</div>`:''}
       <table><tr><th>品名</th><th>数量</th><th>単価</th><th>金額</th></tr>
       ${myHac.map(x=>`<tr><td>${esc(x.item_name)}</td><td>${esc(x.qty)}${esc(x.unit)}</td>
         <td>${yen(x.unit_price)}</td><td>${yen(x.amount)}</td></tr>`).join('')}
