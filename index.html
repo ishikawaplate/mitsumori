@@ -1068,13 +1068,16 @@ function printOrderReceipt(reqId){
   const sup=D.sup(norm(req.supplier_ids));
   const total=hac.reduce((s,x)=>s+Number(x.amount||0),0);
   const supNames=[...new Set(hac.map(x=>D.sup(x.supplier_id)?.name).filter(Boolean))];
-  const rows = items.length ? items.map(it=>{
-    const h=hac.find(x=>norm(x.irai_meisai_id)===norm(it.irai_meisai_id));
-    return `<tr><td>${esc(it.maker)}</td><td>${esc(it.zaishitsu)}</td><td>${esc(it.iro)}</td><td>${esc(it.itaatsu)}</td><td>${esc(it.size)}</td>
-      <td>${esc(it.qty)}${esc(it.unit)}</td><td>${h?yen(h.unit_price):'—'}</td><td>${h?yen(h.amount):'—'}</td>
-      <td>${esc(D.sup(h&&h.supplier_id)?.name||sup?.name||'')}</td></tr>`;
-  }).join('') : hac.map(x=>`<tr><td colspan="5">${esc(x.item_name)}</td><td>${esc(x.qty)}${esc(x.unit)}</td>
-    <td>${yen(x.unit_price)}</td><td>${yen(x.amount)}</td><td>${esc(D.sup(x.supplier_id)?.name||'')}</td></tr>`).join('');
+  // 品名・仕様は「依頼明細」（hinmei/shiyou）を優先。直接発注/現場発注/見積り経由のどの発注方式でも
+  // この2項目は必ず入っているため、これで統一して表示する（メーカー等の細目は仕様欄にまとめて入っている）。
+  const rows = hac.map(x=>{
+    const it=items.find(m=>norm(m.irai_meisai_id)===norm(x.irai_meisai_id));
+    const hinmei = (it && norm(it.hinmei)) || norm(x.item_name) || '（追加品目）';
+    const shiyou = it ? norm(it.shiyou) : '';
+    return `<tr><td>${esc(hinmei)}</td><td class="sub">${esc(shiyou)}</td>
+      <td>${esc(x.qty)}${esc(x.unit)}</td><td>${yen(x.unit_price)}</td><td>${yen(x.amount)}</td>
+      <td>${esc(D.sup(x.supplier_id)?.name||sup?.name||'')}</td></tr>`;
+  }).join('');
   const w=window.open('','_blank');
   if(!w){ toast('ポップアップがブロックされました。ブラウザの設定をご確認ください。'); return; }
   w.document.write(`<html><head><title>発注控え ${esc(reqId)}</title><style>
@@ -1083,6 +1086,7 @@ function printOrderReceipt(reqId){
     table{width:100%;border-collapse:collapse;margin-top:12px;font-size:12px;}
     th,td{border:1px solid #999;padding:5px 8px;text-align:left;}
     th{background:#eee;}
+    .sub{color:#555;}
     .meta{font-size:12px;color:#444;margin:2px 0;white-space:pre-wrap;}
     .total{text-align:right;font-weight:bold;margin-top:10px;font-size:14px;}
   </style></head><body>
@@ -1093,7 +1097,7 @@ function printOrderReceipt(reqId){
     ${req.hacchu_info?`<div class="meta">${esc(req.hacchu_info)}</div>`:''}
     ${req.note?`<div class="meta">備考: ${esc(req.note)}</div>`:''}
     ${norm(req.shanai_bikou)?`<div class="meta">社内備考: ${esc(req.shanai_bikou)}</div>`:''}
-    <table><tr><th>メーカー</th><th>材質</th><th>色</th><th>板厚</th><th>サイズ</th><th>数量</th><th>単価</th><th>金額</th><th>発注先</th></tr>${rows}</table>
+    <table><tr><th>品名</th><th>仕様</th><th>数量</th><th>単価</th><th>金額</th><th>発注先</th></tr>${rows}</table>
     <div class="total">合計 ${yen(total)}</div>
   </body></html>`);
   w.document.close();
