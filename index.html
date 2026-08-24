@@ -1388,7 +1388,7 @@ function renderReqForm(r, items){
         <textarea rows="3" placeholder="在庫状況、条件など（改行できます）" oninput="upMeta('${r.req_id}','note',this.value)">${esc(a.note)}</textarea></div>
     </div>
     <div style="margin-top:14px;text-align:right;">
-      <button class="btn btn-primary" onclick="sendQuote('${esc(r.req_id)}')">この内容で回答する</button>
+      <button class="btn btn-primary" id="qbtn-${cssEsc(r.req_id)}" onclick="sendQuote('${esc(r.req_id)}')">この内容で回答する</button>
     </div>
     ${qaBlockSupplier(r.req_id)}`;
 }
@@ -1422,6 +1422,8 @@ function delExtra(rid,i){
 }
 
 async function sendQuote(reqId){
+  const btn=$('#qbtn-'+cssEsc(reqId));
+  if(btn && btn.disabled) return; // ボタン連打による二重送信を防止
   const a=window._ans[reqId];
   const lines=[
     ...a.lines.filter(l=>norm(l.kubun)==='対応不可'||norm(l.unit_price)!==''),
@@ -1431,9 +1433,14 @@ async function sendQuote(reqId){
   const missing=a.lines.filter(l=>norm(l.kubun)!=='対応不可'&&norm(l.unit_price)==='');
   if(missing.length){ toast('単価が未入力の品目があります（出せない場合は区分を「対応不可」にしてください）'); return; }
   if(!confirm('この内容で回答を送信しますか？送信後の修正はできません。')) return;
+  if(btn){ btn.disabled=true; btn.textContent='送信中...'; }
   const r=await apiPost({action:'submitQuote',key:window._sup.key,req_id:reqId,
     lines, note:a.note, valid_until:a.valid});
-  if(!r.ok){ toast('エラー: '+r.error); return; }
+  if(!r.ok){
+    toast('エラー: '+r.error);
+    if(btn){ btn.disabled=false; btn.textContent='この内容で回答する'; }
+    return;
+  }
   toast('回答を送信しました。ありがとうございました。');
   supplierInit(window._sup.key);
 }
