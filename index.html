@@ -264,7 +264,7 @@ function renderListBody(){
       return `<div class="item" onclick="openDetail('${esc(r.req_id)}')">
         <div class="item-main">
           <h3>${esc(r.title)||'（無題）'}
-            ${norm(r.mode)==='genba'?'<span class="pill" style="background:#fef3c7;color:#b45309;">現場発注 承認待ち</span>':''}
+            ${norm(r.mode)==='genba'?(norm(r.status)==='inquiry'?'<span class="pill" style="background:#e0e7ff;color:#3730a3;">現場へ問い合わせ中</span>':'<span class="pill" style="background:#fef3c7;color:#b45309;">現場発注 承認待ち</span>'):''}
             ${norm(r.mode)==='hacchu'?'<span class="pill pill-hac">直接発注</span>':(norm(r.mode)==='genba'?'':(norm(r.status)==='closed'?'<span class="pill pill-closed">締切済</span>':over?'<span class="pill pill-over">期限超過</span>':'<span class="pill pill-open">回答待ち</span>'))}
             ${norm(r.mode)==='hacchu'&&norm(r.source)==='genba'?'<span class="pill" style="background:#e0e7ff;color:#4338ca;">現場発注</span>':''}
             ${unansweredQa(r.req_id)?`<span class="pill pill-qa">質問${unansweredQa(r.req_id)}件</span>`:''}
@@ -294,7 +294,7 @@ function setTanto(n){ state.tanto=n; renderTantoRow(); renderListBody(); }
 /* ---------- 新規依頼（複数品目） ---------- */
 function renderNew(){
   state.view='new';
-  window._items=[{hinmei:'',shiyou:'',qty:1,unit:'枚'}];
+  window._items=[{hinmei:'',shiyou:'',qty:1,unit:'枚',item_note:''}];
   window._sel=[]; window._newCat='resin';
   app.innerHTML = headerHtml(false) + `
     <button class="back" onclick="renderList()">← 一覧に戻る</button>
@@ -335,18 +335,19 @@ function newCat(c){
 }
 function renderItems(){
   $('#items-box').innerHTML = `<table class="mtable">
-    <tr><th style="width:32%;">品名</th><th style="width:38%;">仕様</th><th>数量</th><th>単位</th><th></th></tr>
+    <tr><th style="width:26%;">品名</th><th style="width:30%;">仕様</th><th>数量</th><th>単位</th><th style="width:20%;">備考</th><th></th></tr>
     ${window._items.map((it,i)=>`<tr>
       <td><input value="${esc(it.hinmei)}" placeholder="例: PET板" oninput="upItem(${i},'hinmei',this.value)"></td>
       <td><input value="${esc(it.shiyou)}" placeholder="例: t2.0 1000×2000 透明" oninput="upItem(${i},'shiyou',this.value)"></td>
       <td><input type="number" value="${esc(it.qty)}" style="width:62px;" oninput="upItem(${i},'qty',this.value)"></td>
       <td><select onchange="upItem(${i},'unit',this.value)">${UNITS.map(u=>`<option ${u===it.unit?'selected':''}>${u}</option>`).join('')}</select></td>
+      <td><input value="${esc(it.item_note)}" placeholder="任意" oninput="upItem(${i},'item_note',this.value)"></td>
       <td>${window._items.length>1?`<button class="m-del" onclick="delItem(${i})">×</button>`:''}</td>
     </tr>`).join('')}
   </table>`;
 }
 function upItem(i,f,v){ window._items[i][f]=v; }
-function addItem(){ window._items.push({hinmei:'',shiyou:'',qty:1,unit:'枚'}); renderItems(); }
+function addItem(){ window._items.push({hinmei:'',shiyou:'',qty:1,unit:'枚',item_note:''}); renderItems(); }
 function delItem(i){ window._items.splice(i,1); renderItems(); }
 
 function renderSupChecks(){
@@ -381,7 +382,7 @@ async function submitNew(){
 /* ---------- 直接発注（見積を経ずに1社へ注文） ---------- */
 function renderDirectOrder(){
   state.view='direct';
-  window._ditems=[{maker:'',zaishitsu:'',iro:'',itaatsu:'',size:'',qty:1,unit:'枚',unit_price:''}];
+  window._ditems=[{maker:'',zaishitsu:'',iro:'',itaatsu:'',size:'',qty:1,unit:'枚',unit_price:'',item_note:''}];
   window._dcat='resin'; window._dsup='';
   app.innerHTML = headerHtml(false) + `
     <button class="back" onclick="renderList()">← 一覧に戻る</button>
@@ -443,7 +444,7 @@ function dPickSup(id){
 }
 function renderDItems(){
   $('#d-items-box').innerHTML = `<div style="overflow-x:auto;"><table class="mtable">
-    <tr><th>メーカー</th><th>材質</th><th>色</th><th>板厚</th><th>サイズ(mm)</th><th>数量</th><th>単位</th><th>単価(任意)</th><th></th></tr>
+    <tr><th>メーカー</th><th>材質</th><th>色</th><th>板厚</th><th>サイズ(mm)</th><th>数量</th><th>単位</th><th>単価(任意)</th><th>備考</th><th></th></tr>
     ${window._ditems.map((it,i)=>`<tr>
       <td><input value="${esc(it.maker)}" style="width:80px;" oninput="upDItem(${i},'maker',this.value)"></td>
       <td><input value="${esc(it.zaishitsu)}" placeholder="アクリル押出板" style="width:110px;" oninput="upDItem(${i},'zaishitsu',this.value)"></td>
@@ -453,12 +454,13 @@ function renderDItems(){
       <td><input type="number" value="${esc(it.qty)}" style="width:54px;" oninput="upDItem(${i},'qty',this.value)"></td>
       <td><select onchange="upDItem(${i},'unit',this.value)">${UNITS.map(u=>`<option ${u===it.unit?'selected':''}>${u}</option>`).join('')}</select></td>
       <td><input type="number" value="${esc(it.unit_price)}" placeholder="—" style="width:80px;" oninput="upDItem(${i},'unit_price',this.value)"></td>
+      <td><input value="${esc(it.item_note)}" placeholder="任意" style="width:90px;" oninput="upDItem(${i},'item_note',this.value)"></td>
       <td>${window._ditems.length>1?`<button class="m-del" onclick="delDItem(${i})">×</button>`:''}</td>
     </tr>`).join('')}
   </table></div>`;
 }
 function upDItem(i,f,v){ window._ditems[i][f]=v; }
-function addDItem(){ window._ditems.push({maker:'',zaishitsu:'',iro:'',itaatsu:'',size:'',qty:1,unit:'枚',unit_price:''}); renderDItems(); }
+function addDItem(){ window._ditems.push({maker:'',zaishitsu:'',iro:'',itaatsu:'',size:'',qty:1,unit:'枚',unit_price:'',item_note:''}); renderDItems(); }
 function delDItem(i){ window._ditems.splice(i,1); renderDItems(); }
 function dToggleNouki(){
   const m=$('#d-mode').value;
@@ -516,20 +518,27 @@ function renderDirectDetail(req){
           ${req.note?`<div class="meta" style="margin-top:4px;white-space:pre-wrap;">備考（仕入れ先へ表示）: ${esc(req.note)}</div>`:''}
           ${norm(req.shanai_bikou)?`<div style="margin-top:6px;font-size:12px;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:6px 10px;color:#92400e;">社内備考（事務所控え）: ${esc(req.shanai_bikou)}</div>`:''}
         </div>
-        ${req.tanto?`<div class="tanto-box" style="border:none;"><div class="tanto-label">担当</div><div class="tanto-name">${esc(req.tanto)}</div></div>`:''}
+        ${req.tanto?`<div class="tanto-box" style="border:none;"><div class="tanto-label">${norm(req.source)==='genba'?'承認(事務所)':'担当'}</div><div class="tanto-name">${esc(req.tanto)}</div></div>`:''}
       </div>
+      ${norm(req.source)==='genba'&&req.genba_tanto?`<div class="meta" style="margin-top:2px;">現場担当（発注者）: ${esc(req.genba_tanto)}</div>`:''}
       <h3 style="font-size:14px;margin:16px 0 8px;">発注品目</h3>
       <div style="overflow-x:auto;"><table>
         <tr><th>メーカー</th><th>材質</th><th>色</th><th>板厚</th><th>サイズ</th><th>数量</th><th>単価</th><th>金額</th></tr>
         ${items.map(it=>{
           const h=hac.find(x=>norm(x.irai_meisai_id)===norm(it.irai_meisai_id));
+          const extraBits=[
+            norm(it.kyakusaki_mei)?'客先: '+norm(it.kyakusaki_mei):'',
+            norm(it.kyakusaki_nouki)?'客先納期: '+fmtDate(it.kyakusaki_nouki):'',
+            norm(it.nyuka_kibou_bi)?'入荷希望日: '+fmtDate(it.nyuka_kibou_bi):'',
+            norm(it.item_note)?'備考: '+norm(it.item_note):''
+          ].filter(Boolean);
           return `<tr>
             <td>${esc(it.maker)}</td><td>${esc(it.zaishitsu)}</td><td>${esc(it.iro)}</td>
             <td>${esc(it.itaatsu)}</td><td>${esc(it.size)}</td>
             <td>${esc(it.qty)}${esc(it.unit)}</td>
             <td>${h&&Number(h.unit_price)?yen(h.unit_price):'—'}</td>
             <td>${h&&Number(h.amount)?yen(h.amount):'—'}</td>
-          </tr>`;
+          </tr>${extraBits.length?`<tr><td colspan="8" style="font-size:11px;color:#64748b;border-top:none;padding-top:0;">${extraBits.map(esc).join('　／　')}</td></tr>`:''}`;
         }).join('')}
       </table></div>
       ${total?`<div class="m-total">合計 ${yen(total)}</div>`:''}
@@ -546,80 +555,110 @@ function renderDirectDetail(req){
 function genbaItemsHtml(req){
   const items=D.reqItems(req.req_id);
   return `<div style="overflow-x:auto;"><table>
-    <tr><th>メーカー</th><th>材質</th><th>色</th><th>板厚</th><th>サイズ</th><th>数量</th></tr>
+    <tr><th>材質</th><th>規格</th><th>板厚</th><th>色</th><th>入荷希望日</th><th>枚数</th><th>客先名</th><th>客先納期</th><th>備考</th></tr>
     ${items.map(it=>`<tr>
-      <td>${esc(it.maker)}</td><td>${esc(it.zaishitsu)}</td><td>${esc(it.iro)}</td>
-      <td>${esc(it.itaatsu)}</td><td>${esc(it.size)}</td><td>${esc(it.qty)}${esc(it.unit)}</td>
+      <td>${esc(it.zaishitsu)}</td><td>${esc(it.size)}</td><td>${esc(it.itaatsu)}</td><td>${esc(it.iro)}</td>
+      <td>${it.nyuka_kibou_bi?esc(fmtDate(it.nyuka_kibou_bi)):'—'}</td><td>${esc(it.qty)}枚</td>
+      <td>${esc(it.kyakusaki_mei)||'—'}</td><td>${it.kyakusaki_nouki?esc(fmtDate(it.kyakusaki_nouki)):'—'}</td>
+      <td>${esc(it.item_note)||'—'}</td>
     </tr>`).join('')}
   </table></div>`;
 }
 function renderGenbaDetail(req){
-  const sup=D.sup(norm(req.supplier_ids));
   const rejected = norm(req.status)==='rejected';
+  const inquiry = norm(req.status)==='inquiry';
+  const pending = norm(req.status)==='pending_approval' || inquiry;
+  const sups=(state.data.suppliers||[]).filter(s=>norm(s.category).toLowerCase()===norm(req.category).toLowerCase());
   app.innerHTML = headerHtml(false) + `
     <button class="back" onclick="renderList()">← 一覧に戻る</button>
     <div class="card">
       <div class="row" style="justify-content:space-between;align-items:flex-start;">
         <div>
           <h2 style="font-size:16px;">${esc(req.title)||'（無題）'}
-            ${rejected?'<span class="pill pill-over">却下</span>':'<span class="pill pill-qa">現場発注 承認待ち</span>'}
+            ${rejected?'<span class="pill pill-over">却下</span>':
+              inquiry?'<span class="pill pill-qa">現場へ問い合わせ中</span>':
+              '<span class="pill pill-qa">現場発注 承認待ち</span>'}
           </h2>
           <div class="meta" style="margin-top:6px;">
             <span class="reqno">${esc(req.req_id)}</span>
-            <span>発注先候補 ${esc(sup?.name||'')}</span>
+            <span>区分 ${norm(req.category)==='metal'?'金属材':'樹脂材'}</span>
             <span>申請日 ${fmtDate(req.created_at)}</span>
           </div>
-          <div class="meta" style="margin-top:4px;">納入先: ${esc(req.genba_nounyu)||'—'} ／ 希望納期: ${esc(req.genba_nouki)||'—'}</div>
-          ${req.tanto?`<div class="meta" style="margin-top:4px;">現場担当: ${esc(req.tanto)}</div>`:''}
+          <div class="meta" style="margin-top:4px;">納入先: ${esc(req.genba_nounyu)||'—'}</div>
+          ${req.genba_tanto||req.tanto?`<div class="meta" style="margin-top:4px;">現場担当: ${esc(req.genba_tanto||req.tanto)}</div>`:''}
           ${norm(req.shanai_bikou)?`<div style="margin-top:6px;font-size:12px;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:6px 10px;color:#92400e;">社内備考: ${esc(req.shanai_bikou)}</div>`:''}
+          ${norm(req.inquiry_note)?`<div style="margin-top:6px;font-size:12px;background:#eef2ff;border:1px solid #c7d2fe;border-radius:6px;padding:6px 10px;color:#3730a3;white-space:pre-wrap;">事務所からの問い合わせ: ${esc(req.inquiry_note)}</div>`:''}
+          ${norm(req.inquiry_reply)?`<div style="margin-top:6px;font-size:12px;background:#f0fdfa;border:1px solid #99f6e4;border-radius:6px;padding:6px 10px;color:#0f766e;white-space:pre-wrap;">現場からの返信: ${esc(req.inquiry_reply)}</div>`:''}
           ${rejected&&norm(req.reject_reason)?`<div style="margin-top:6px;font-size:12px;background:#fee2e2;border:1px solid #fca5a5;border-radius:6px;padding:6px 10px;color:#991b1b;">却下理由: ${esc(req.reject_reason)}</div>`:''}
         </div>
       </div>
       <h3 style="font-size:14px;margin:16px 0 8px;">申請品目</h3>
       ${genbaItemsHtml(req)}
-      ${rejected?'':`<div style="margin-top:16px;text-align:right;">
-        <button class="btn btn-ghost" onclick="rejectGenba('${esc(req.req_id)}')">却下する</button>
-        <button class="btn btn-primary" onclick="approveGenba('${esc(req.req_id)}')">承認して発注する</button>
-      </div>`}
+      ${pending?`<div class="itembox" style="margin-top:16px;">
+        <div class="grid2">
+          <div><label>発注先（承認時に選択）</label>
+            <select id="ga-sup">
+              <option value="">選択してください</option>
+              ${sups.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('')}
+            </select></div>
+          <div><label>承認する事務所担当者名</label><input id="ga-tanto" placeholder="例: 西村"></div>
+        </div>
+        <div style="margin-top:16px;text-align:right;">
+          <button class="btn btn-ghost" onclick="inquireGenba('${esc(req.req_id)}')">問い合わせる</button>
+          <button class="btn btn-primary" onclick="approveGenba('${esc(req.req_id)}')">承認して発注する</button>
+        </div>
+      </div>`:''}
     </div>`;
 }
 function renderGenbaApproval(){
   state.view='genbaApproval';
   const pend=(state.data.requests||[]).filter(r=>norm(r.mode)==='genba'&&norm(r.status)==='pending_approval').slice().reverse();
+  const inq=(state.data.requests||[]).filter(r=>norm(r.mode)==='genba'&&norm(r.status)==='inquiry').slice().reverse();
   app.innerHTML = headerHtml(false) + `
     <button class="back" onclick="renderList()">← 一覧に戻る</button>
     <h2 style="font-size:16px;margin-bottom:10px;">現場発注 承認待ち（${pend.length}件）</h2>
     ${pend.length?'':'<div class="card sub">現在、承認待ちの現場発注はありません。</div>'}
     ${pend.map(r=>{
-      const sup=D.sup(norm(r.supplier_ids)), items=D.reqItems(r.req_id);
+      const items=D.reqItems(r.req_id);
       return `<div class="item" onclick="openDetail('${esc(r.req_id)}')">
         <div class="item-main">
           <h3>${esc(r.title)||'（無題）'}</h3>
           <div class="meta">
             <span class="reqno">${esc(r.req_id)}</span>
-            <span>発注先候補 ${esc(sup?.name||'')}</span>
+            <span>区分 ${norm(r.category)==='metal'?'金属材':'樹脂材'}</span>
             <span>品目 ${items.length}件</span>
             <span>申請日 ${fmtDate(r.created_at)}</span>
           </div>
         </div>
-        ${r.tanto?`<div class="tanto-box"><div class="tanto-label">現場</div><div class="tanto-name">${esc(r.tanto)}</div></div>`:''}
+        ${r.genba_tanto||r.tanto?`<div class="tanto-box"><div class="tanto-label">現場</div><div class="tanto-name">${esc(r.genba_tanto||r.tanto)}</div></div>`:''}
       </div>`;
-    }).join('')}`;
+    }).join('')}
+    ${inq.length?`<h2 style="font-size:16px;margin:20px 0 10px;">現場への問い合わせ中（${inq.length}件）</h2>
+      ${inq.map(r=>`<div class="item" onclick="openDetail('${esc(r.req_id)}')">
+        <div class="item-main">
+          <h3>${esc(r.title)||'（無題）'}</h3>
+          <div class="meta"><span class="reqno">${esc(r.req_id)}</span><span>${esc(r.inquiry_note)}</span></div>
+        </div>
+      </div>`).join('')}` : ''}`;
 }
 async function approveGenba(reqId){
+  const sid=$('#ga-sup').value;
+  if(!sid){ toast('発注先を選択してください'); return; }
+  const officeTanto=$('#ga-tanto').value.trim();
+  if(!officeTanto){ toast('承認する事務所担当者名を入力してください'); return; }
   if(!confirm('この内容で承認し、仕入れ先へ発注メール（バーコード付きラベルPDF添付）を送信します。よろしいですか？')) return;
-  const r=await apiPost({action:'approveGenbaOrder',pass:state.pass,req_id:reqId});
+  const r=await apiPost({action:'approveGenbaOrder',pass:state.pass,req_id:reqId,supplierId:sid,officeTanto});
   if(!r.ok){ toast('エラー: '+r.error); return; }
   toast('承認して発注しました');
   await loadAll();
 }
-async function rejectGenba(reqId){
-  const reason=prompt('却下理由を入力してください（現場側の画面に表示されます）');
-  if(reason===null) return;
-  if(!reason.trim()){ toast('却下理由を入力してください'); return; }
-  const r=await apiPost({action:'rejectGenbaOrder',pass:state.pass,req_id:reqId,reason:reason.trim()});
+async function inquireGenba(reqId){
+  const message=prompt('現場への問い合わせ内容を入力してください（例: 廃盤の可能性があるため確認したい）');
+  if(message===null) return;
+  if(!message.trim()){ toast('問い合わせ内容を入力してください'); return; }
+  const r=await apiPost({action:'inquireGenba',pass:state.pass,req_id:reqId,message:message.trim()});
   if(!r.ok){ toast('エラー: '+r.error); return; }
-  toast('却下しました');
+  toast('現場へ問い合わせました');
   await loadAll();
 }
 
@@ -704,15 +743,19 @@ async function reloadGenba(){
   const r=await apiGet({action:'getAll',pass:state.pass});
   if(r.ok) state.data=r;
 }
+function emptyGItem(){
+  return {zaishitsu:'',size:'',itaatsu:'',iro:'',nyuka_kibou_bi:'',qty:1,kyakusaki_mei:'',kyakusaki_nouki:'',item_note:''};
+}
 function renderGenbaHome(){
   state.view='genbaHome';
-  window._gitems=[{maker:'',zaishitsu:'',iro:'',itaatsu:'',size:'',qty:1,unit:'枚'}];
-  window._gcat='resin'; window._gsup=''; window._gq='';
+  window._gitems=[emptyGItem()];
+  window._gcat='resin'; window._geditingReqId=null;
   app.innerHTML = `
     <header><div class="brand"><div class="logo">見</div><div><h1>現場発注</h1><div class="sub">石川プレート</div></div></div></header>
     <div class="card">
       <h2 style="font-size:16px;margin-bottom:2px;">材料を発注する</h2>
-      <div class="sub" style="margin-bottom:6px;">送信すると事務所の承認後に仕入れ先へ発注されます（プールされます）。</div>
+      <div class="sub" style="margin-bottom:6px;">送信すると事務所の承認後に仕入れ先へ発注されます（発注先は事務所が選びます）。</div>
+      <div id="g-edit-banner" style="display:none;margin-bottom:10px;font-size:12px;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:8px 10px;color:#92400e;white-space:pre-wrap;"></div>
       <label>材料区分</label>
       <div class="row">
         <button class="tab on" id="gcat-resin" onclick="gCat('resin')">樹脂材</button>
@@ -722,94 +765,102 @@ function renderGenbaHome(){
         <div><label>件名（任意）</label><input id="g-title" placeholder="例: アクリル押出板"></div>
         <div><label>担当者名</label><input id="g-tanto" placeholder="例: 山口"></div>
       </div>
-      <label>発注先（1社）</label>
-      <div id="g-sup-list" class="grid2"></div>
       <label style="margin-top:14px;">発注品目</label>
       <div id="g-items-box"></div>
       <div style="margin-top:6px;"><button class="btn btn-ghost btn-sm" onclick="addGItem()">＋ 品目を追加</button></div>
-      <div class="grid2" style="margin-top:8px;">
-        <div><label>納入先</label><select id="g-nou">${NOUNYU_OPTIONS.map(o=>`<option>${o}</option>`).join('')}</select></div>
-        <div><label>希望納期</label>
-          <select id="g-mode" onchange="gToggleNouki()">
-            <option value="date">日付を指定する</option>
-            <option value="normal">通常納期（おまかせ）</option>
-          </select></div>
+      <div style="margin-top:8px;"><label>納入先</label><select id="g-nou">${NOUNYU_OPTIONS.map(o=>`<option>${o}</option>`).join('')}</select></div>
+      <div id="g-reply-wrap" style="display:none;margin-top:8px;">
+        <label>事務所への返信（任意）</label>
+        <textarea id="g-reply" rows="2" placeholder="問い合わせへの回答など"></textarea>
       </div>
-      <div id="g-date-wrap" style="margin-top:8px;"><label>希望納入日</label><input type="date" id="g-date" style="max-width:200px;"></div>
       <div style="margin-top:18px;text-align:right;">
         <button class="btn btn-primary" id="gsend-btn" onclick="submitGenba()">この内容で発注申請する</button>
       </div>
     </div>
-    <h2 style="font-size:15px;margin:20px 0 10px;">自分の申請状況</h2>
-    <div id="g-mine"></div>
-    <h2 style="font-size:15px;margin:20px 0 10px;">入荷確認</h2>
-    <div class="card">
-      <input id="g-search" placeholder="品名・仕入れ先で検索" oninput="renderGArrivals()">
+    <div class="row" style="gap:8px;margin:20px 0 10px;">
+      <button class="tab on" id="gtab-mine" onclick="gShowTab('mine')">申請状況</button>
+      <button class="tab" id="gtab-arrivals" onclick="gShowTab('arrivals')">入荷確認</button>
     </div>
-    <div id="g-arrivals"></div>`;
+    <div id="g-mine-section"><div id="g-mine"></div></div>
+    <div id="g-arrivals-section" style="display:none;">
+      <div class="card"><input id="g-search" placeholder="品名・材質・仕入れ先・発注者で検索" oninput="renderGArrivals()"></div>
+      <div id="g-arrivals"></div>
+    </div>`;
   gCat('resin'); renderGItems(); renderGMine(); renderGArrivals();
 }
+function gShowTab(t){
+  $('#gtab-mine').classList.toggle('on', t==='mine');
+  $('#gtab-arrivals').classList.toggle('on', t==='arrivals');
+  $('#g-mine-section').style.display = t==='mine' ? 'block' : 'none';
+  $('#g-arrivals-section').style.display = t==='arrivals' ? 'block' : 'none';
+}
 function gCat(c){
-  window._gcat=c; window._gsup='';
+  window._gcat=c;
   $('#gcat-resin').classList.toggle('on',c==='resin');
   $('#gcat-metal').classList.toggle('on',c==='metal');
-  const sups=(state.data.suppliers||[]).filter(s=>norm(s.category).toLowerCase()===c);
-  $('#g-sup-list').innerHTML = sups.length
-    ? sups.map(s=>`<div class="supcheck" id="gsc-${s.id}" onclick="gPickSup('${s.id}')"><span>○</span><span>${esc(s.name)}</span></div>`).join('')
-    : '<div class="sub" style="grid-column:1/-1;">この区分の仕入れ先が見つかりません。</div>';
-}
-function gPickSup(id){
-  window._gsup=id;
-  (state.data.suppliers||[]).forEach(s=>{
-    const el=$('#gsc-'+s.id); if(!el) return;
-    const on=s.id===id;
-    el.classList.toggle('on',on);
-    el.querySelector('span').textContent = on?'●':'○';
-  });
 }
 function renderGItems(){
   $('#g-items-box').innerHTML = `<div style="overflow-x:auto;"><table class="mtable">
-    <tr><th>メーカー</th><th>材質</th><th>色</th><th>板厚</th><th>サイズ(mm)</th><th>数量</th><th>単位</th><th></th></tr>
+    <tr><th>材質</th><th>規格</th><th>板厚</th><th>色</th><th>入荷希望日</th><th>枚数</th><th>客先名</th><th>客先納期</th><th>備考</th><th></th></tr>
     ${window._gitems.map((it,i)=>`<tr>
-      <td><input value="${esc(it.maker)}" style="width:80px;" oninput="upGItem(${i},'maker',this.value)"></td>
-      <td><input value="${esc(it.zaishitsu)}" placeholder="アクリル押出板" style="width:110px;" oninput="upGItem(${i},'zaishitsu',this.value)"></td>
-      <td><input value="${esc(it.iro)}" placeholder="トーメー" style="width:70px;" oninput="upGItem(${i},'iro',this.value)"></td>
-      <td><input value="${esc(it.itaatsu)}" placeholder="3t" style="width:54px;" oninput="upGItem(${i},'itaatsu',this.value)"></td>
+      <td><input value="${esc(it.zaishitsu)}" placeholder="アクリル押出板" style="width:120px;" oninput="upGItem(${i},'zaishitsu',this.value)"></td>
       <td><input value="${esc(it.size)}" placeholder="1380×1830" style="width:110px;" oninput="upGItem(${i},'size',this.value)"></td>
+      <td><input value="${esc(it.itaatsu)}" placeholder="3" style="width:48px;" oninput="upGItem(${i},'itaatsu',this.value)"></td>
+      <td><input value="${esc(it.iro)}" placeholder="トーメー" style="width:68px;" oninput="upGItem(${i},'iro',this.value)"></td>
+      <td><input type="date" value="${esc(it.nyuka_kibou_bi)}" style="width:150px;" oninput="upGItem(${i},'nyuka_kibou_bi',this.value)"></td>
       <td><input type="number" value="${esc(it.qty)}" style="width:54px;" oninput="upGItem(${i},'qty',this.value)"></td>
-      <td><select onchange="upGItem(${i},'unit',this.value)">${UNITS.map(u=>`<option ${u===it.unit?'selected':''}>${u}</option>`).join('')}</select></td>
+      <td><input value="${esc(it.kyakusaki_mei)}" placeholder="○○様" style="width:90px;" oninput="upGItem(${i},'kyakusaki_mei',this.value)"></td>
+      <td><input type="date" value="${esc(it.kyakusaki_nouki)}" style="width:150px;" oninput="upGItem(${i},'kyakusaki_nouki',this.value)"></td>
+      <td><input value="${esc(it.item_note)}" placeholder="任意" style="width:90px;" oninput="upGItem(${i},'item_note',this.value)"></td>
       <td>${window._gitems.length>1?`<button class="m-del" onclick="delGItem(${i})">×</button>`:''}</td>
     </tr>`).join('')}
   </table></div>`;
 }
 function upGItem(i,f,v){ window._gitems[i][f]=v; }
-function addGItem(){ window._gitems.push({maker:'',zaishitsu:'',iro:'',itaatsu:'',size:'',qty:1,unit:'枚'}); renderGItems(); }
+function addGItem(){ window._gitems.push(emptyGItem()); renderGItems(); }
 function delGItem(i){ window._gitems.splice(i,1); renderGItems(); }
-function gToggleNouki(){
-  const m=$('#g-mode').value;
-  $('#g-date-wrap').style.display = m==='normal'?'none':'block';
-}
+
 async function submitGenba(){
-  if(!window._gsup){ toast('発注先を1社選んでください'); return; }
-  const items=window._gitems.filter(it=>it.maker||it.zaishitsu||it.size||it.iro);
+  const items=window._gitems.filter(it=>it.zaishitsu||it.size||it.iro||it.itaatsu);
   if(!items.length){ toast('品目を1行以上入力してください'); return; }
-  const mode=$('#g-mode').value;
-  let nouki='通常納期';
-  if(mode==='date'){
-    const d=$('#g-date').value;
-    if(!d){ toast('希望納入日を入力してください（通常納期の場合はプルダウンで切替）'); return; }
-    nouki=d;
-  }
   const nou=$('#g-nou').value;
-  if(!confirm('この内容で発注申請しますか？\n\n発注先: '+(D.sup(window._gsup)?.name||'')+'\n納入先: '+nou+'\n希望納期: '+nouki+'\n\n事務所の承認後に発注されます。')) return;
+  const editing=window._geditingReqId;
+  if(!confirm(editing?'この内容で再申請しますか？':'この内容で発注申請しますか？\n\n事務所の承認後に発注されます。')) return;
   const b=$('#gsend-btn'); b.disabled=true; b.textContent='送信中...';
-  const r=await apiPost({action:'addGenbaOrder',pass:state.pass,category:window._gcat,
+  const payload={pass:state.pass,category:window._gcat,
     title:$('#g-title').value.trim(), tanto:$('#g-tanto').value.trim(),
-    supplierId:window._gsup, items, nounyusaki:nou, nouki});
-  if(!r.ok){ toast('エラー: '+r.error); b.disabled=false; b.textContent='この内容で発注申請する'; return; }
-  toast('発注申請を送信しました（承認待ち）');
+    nounyusaki:nou, items};
+  const r = editing
+    ? await apiPost(Object.assign({action:'updateGenbaOrder',req_id:editing,reply:$('#g-reply').value.trim()},payload))
+    : await apiPost(Object.assign({action:'addGenbaOrder'},payload));
+  if(!r.ok){ toast('エラー: '+r.error); b.disabled=false; b.textContent=editing?'この内容で再申請する':'この内容で発注申請する'; return; }
+  toast(editing?'再申請しました':'発注申請を送信しました（承認待ち）');
   await reloadGenba();
   renderGenbaHome();
+}
+function editGenbaOrder(reqId){
+  const req=(state.data.requests||[]).find(r=>norm(r.req_id)===norm(reqId));
+  if(!req) return;
+  const items=D.reqItems(reqId);
+  window._geditingReqId=reqId;
+  window._gitems = items.length ? items.map(it=>({
+    zaishitsu:norm(it.zaishitsu), size:norm(it.size), itaatsu:norm(it.itaatsu), iro:norm(it.iro),
+    nyuka_kibou_bi:norm(it.nyuka_kibou_bi), qty:it.qty||1,
+    kyakusaki_mei:norm(it.kyakusaki_mei), kyakusaki_nouki:norm(it.kyakusaki_nouki), item_note:norm(it.item_note)
+  })) : [emptyGItem()];
+  window._gcat = norm(req.category)||'resin';
+  gCat(window._gcat);
+  renderGItems();
+  $('#g-title').value = req.title||'';
+  $('#g-tanto').value = req.genba_tanto||req.tanto||'';
+  $('#g-nou').value = norm(req.genba_nounyu)||NOUNYU_OPTIONS[0];
+  const banner=$('#g-edit-banner');
+  banner.style.display='block';
+  banner.textContent = '事務所からの問い合わせ: ' + (norm(req.inquiry_note)||'（内容をご確認のうえ再申請してください）');
+  $('#g-reply-wrap').style.display='block';
+  $('#g-reply').value='';
+  $('#gsend-btn').textContent='この内容で再申請する';
+  window.scrollTo({top:0,behavior:'smooth'});
 }
 function renderGMine(){
   const list=(state.data.requests||[]).filter(r=>norm(r.source)==='genba').slice().reverse().slice(0,15);
@@ -817,31 +868,56 @@ function renderGMine(){
   if(!list.length){ el.innerHTML='<div class="card sub">まだ申請はありません。</div>'; return; }
   el.innerHTML = list.map(r=>{
     const sup=D.sup(norm(r.supplier_ids));
-    let pill;
-    if(norm(r.status)==='rejected') pill=`<span class="pill pill-over">却下されました${r.reject_reason?'：'+esc(r.reject_reason):''}</span>`;
-    else if(norm(r.status)==='pending_approval') pill='<span class="pill pill-qa">承認待ち</span>';
-    else pill='<span class="pill pill-hac">発注済み</span>';
+    let pill, extra='';
+    if(norm(r.status)==='inquiry'){
+      pill='<span class="pill pill-qa">事務所から問い合わせ</span>';
+      extra = `<div style="margin-top:8px;font-size:12px;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:8px 10px;color:#92400e;white-space:pre-wrap;">${esc(r.inquiry_note)}</div>
+        <div style="margin-top:8px;text-align:right;"><button class="btn btn-primary btn-sm" onclick="editGenbaOrder('${esc(r.req_id)}')">内容を確認して再申請する</button></div>`;
+    } else if(norm(r.status)==='pending_approval'){
+      pill='<span class="pill pill-qa">承認待ち</span>';
+    } else if(norm(r.status)==='rejected'){
+      pill=`<span class="pill pill-over">却下${r.reject_reason?'：'+esc(r.reject_reason):''}</span>`;
+    } else {
+      pill='<span class="pill pill-hac">発注済み'+(sup&&sup.name?'（'+esc(sup.name)+'）':'')+'</span>';
+    }
     return `<div class="card">
-      <div class="row" style="justify-content:space-between;">
-        <div>
-          <div style="font-weight:700;">${esc(r.title)||'（無題）'} ${pill}</div>
-          <div class="meta" style="margin-top:4px;"><span class="reqno">${esc(r.req_id)}</span><span>発注先 ${esc(sup?.name||'')}</span><span>${fmtDate(r.created_at)}</span></div>
-        </div>
-      </div>
+      <div style="font-weight:700;">${esc(r.title)||'（無題）'} ${pill}</div>
+      <div class="meta" style="margin-top:4px;"><span class="reqno">${esc(r.req_id)}</span><span>発注者 ${esc(r.genba_tanto||r.tanto||'')}</span><span>${fmtDate(r.created_at)}</span></div>
+      ${extra}
     </div>`;
   }).join('');
 }
 function renderGArrivals(){
   const q=norm($('#g-search')?.value||'').toLowerCase();
   const list=(state.data.hacchu||[]).filter(h=>norm(h.nyuka_status)==='入荷済み')
-    .filter(h=>!q || (norm(h.item_name)+' '+esc(D.sup(h.supplier_id)?.name||'')).toLowerCase().includes(q))
+    .map(h=>{
+      const req=(state.data.requests||[]).find(r=>norm(r.req_id)===norm(h.req_id));
+      const it=(state.data.iraiMeisai||[]).find(m=>norm(m.irai_meisai_id)===norm(h.irai_meisai_id));
+      return {h,req,it};
+    })
+    .filter(({h,req,it})=>{
+      if(!q) return true;
+      const hay=[h.item_name, it&&it.zaishitsu, it&&it.iro, it&&it.itaatsu, it&&it.size,
+        D.sup(h.supplier_id)&&D.sup(h.supplier_id).name, req&&(req.genba_tanto||req.tanto)]
+        .filter(Boolean).join(' ').toLowerCase();
+      return hay.includes(q);
+    })
     .slice().reverse().slice(0,30);
   const el=$('#g-arrivals');
   if(!list.length){ el.innerHTML='<div class="card sub">該当する入荷はありません。</div>'; return; }
-  el.innerHTML = list.map(h=>`<div class="card" style="background:#f0fdfa;">
-    <div style="font-weight:700;">${esc(h.item_name)} ${esc(h.qty)}${esc(h.unit)}</div>
-    <div class="meta" style="margin-top:4px;"><span>${esc(D.sup(h.supplier_id)?.name||'')}</span><span class="reqno">${esc(h.req_id)}</span><span>入荷 ${esc(h.nyuka_at)}</span></div>
-  </div>`).join('');
+  el.innerHTML = list.map(({h,req,it})=>{
+    const spec=[it&&it.zaishitsu, it&&it.iro, it&&it.itaatsu?it.itaatsu+'t':'', it&&it.size].filter(Boolean).join(' ／ ');
+    return `<div class="card" style="background:#f0fdfa;">
+      <div style="font-weight:700;">${esc(h.item_name)} ${esc(h.qty)}${esc(h.unit)}</div>
+      ${spec?`<div class="sub" style="margin-top:2px;">${esc(spec)}</div>`:''}
+      <div class="meta" style="margin-top:4px;">
+        <span>${esc(D.sup(h.supplier_id)&&D.sup(h.supplier_id).name||'')}</span>
+        <span>発注者 ${esc(req?(req.genba_tanto||req.tanto):'')||'—'}</span>
+        <span class="reqno">${esc(h.req_id)}</span>
+        <span>入荷 ${esc(h.nyuka_at)}</span>
+      </div>
+    </div>`;
+  }).join('');
 }
 
 function renderDetail(reqId){
@@ -1254,6 +1330,12 @@ function supMatch(r){
   return (norm(r.title)+' '+items+' '+norm(r.note)+' '+norm(r.req_id)).toLowerCase().includes(q);
 }
 
+function toggleDoneList(){
+  const el=$('#done-list'), btn=$('#done-toggle-btn');
+  const showing = el.style.display!=='none';
+  el.style.display = showing ? 'none' : 'block';
+  btn.textContent = showing ? btn.textContent.replace('を隠す','を表示') : btn.textContent.replace('を表示','を隠す');
+}
 function renderSupplierBody(){
   const d=window._sup, S=SD();
   const openReqs=d.requests.filter(r=>norm(r.status)==='open'&&!d.quotes.some(q=>norm(q.req_id)===norm(r.req_id))&&supMatch(r));
@@ -1263,17 +1345,23 @@ function renderSupplierBody(){
 
   const orderedHtml = ordered.map(r=>{
     const myHac=S.hac(r.req_id);
+    const myItems=S.items(r.req_id);
+    const isGenba = norm(r.source)==='genba';
     const yotei=fmtDate(myHac[0]&&myHac[0].nounyu_yotei);
     const total=myHac.reduce((s,x)=>s+Number(x.amount||0),0);
     return `<div class="card" style="background:#eef2ff;">
       <h3 style="font-size:14px;">${esc(r.title)} <span class="pill pill-hac">ご注文</span></h3>
       <div class="meta" style="margin:5px 0 8px;"><span class="reqno">${esc(r.req_id)}</span></div>
       ${r.note?`<div class="meta" style="margin-bottom:8px;white-space:pre-wrap;">備考: ${esc(r.note)}</div>`:''}
-      <table><tr><th>品名</th><th>数量</th><th>単価</th><th>金額</th></tr>
-      ${myHac.map(x=>`<tr><td>${esc(x.item_name)}</td><td>${esc(x.qty)}${esc(x.unit)}</td>
-        <td>${yen(x.unit_price)}</td><td>${yen(x.amount)}</td></tr>`).join('')}
+      <table><tr><th>材質</th><th>色</th><th>板厚</th><th>規格</th><th>枚数</th>${isGenba?'':'<th>単価</th><th>金額</th>'}</tr>
+      ${myHac.map(x=>{
+        const it=myItems.find(m=>norm(m.irai_meisai_id)===norm(x.irai_meisai_id));
+        return `<tr><td>${esc(it&&it.zaishitsu||x.item_name)}</td><td>${esc(it&&it.iro)}</td><td>${esc(it&&it.itaatsu)}</td>
+          <td>${esc(it&&it.size)}</td><td>${esc(x.qty)}${esc(x.unit)}</td>
+          ${isGenba?'':`<td>${yen(x.unit_price)}</td><td>${yen(x.amount)}</td>`}</tr>`;
+      }).join('')}
       </table>
-      <div class="m-total">ご注文合計 ${yen(total)}</div>
+      ${isGenba?'':`<div class="m-total">ご注文合計 ${yen(total)}</div>`}
       <div style="margin-top:10px;border-top:1px solid #dbe2f0;padding-top:10px;">
         <label>納入予定日${yotei?`（登録済: ${esc(yotei)}）`:''}</label>
         <div class="row" style="gap:8px;">
@@ -1290,7 +1378,10 @@ function renderSupplierBody(){
     ${openReqs.length?'':'<div class="card sub">'+(norm(window._sq)?'該当する依頼はありません。':'現在、ご回答をお願いしている依頼はありません。')+'</div>'}
     <div id="open-reqs"></div>
     ${ordered.length?'<h2 style="font-size:15px;margin:22px 0 10px;">ご注文いただいた依頼（納入予定日のご登録）</h2>'+orderedHtml:''}
-    ${done.length?'<h2 style="font-size:15px;margin:22px 0 10px;">回答済み</h2>':''}
+    ${done.length?`<div style="margin:22px 0 10px;">
+      <button class="btn btn-ghost btn-sm" id="done-toggle-btn" onclick="toggleDoneList()">回答済み（${done.length}件）を表示</button>
+    </div>`:''}
+    <div id="done-list" style="display:none;">
     ${done.map(r=>{
       const q=d.quotes.find(x=>norm(x.req_id)===norm(r.req_id));
       const mei=S.mei(q.kaito_id);
@@ -1312,7 +1403,8 @@ function renderSupplierBody(){
         ${q.note?`<div class="sub" style="margin-top:6px;white-space:pre-wrap;">コメント: ${esc(q.note)}</div>`:''}
         ${qaBlockSupplier(r.req_id)}
       </div>`;
-    }).join('')}`;
+    }).join('')}
+    </div>`;
 
   const box=$('#open-reqs');
   openReqs.forEach(r=>{
