@@ -103,7 +103,14 @@ let state = { pass:'', data:null, view:'list', currentReq:null, q:'', cat:'all',
 
 function toast(m){ const t=$('#toast'); t.textContent=m; t.style.display='block'; setTimeout(()=>t.style.display='none',3200); }
 function esc(s){ return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-function fmtDate(v){ if(!v) return ''; const s=String(v); return s.includes('T')?s.slice(0,10):s; }
+function fmtDate(v){
+  if(!v) return '';
+  const s=String(v);
+  if(/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10); // 既に yyyy-MM-dd（ISO日時含む）
+  const d=new Date(s);
+  if(!isNaN(d)) return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  return s;
+}
 function yen(n){ return '¥'+Number(n||0).toLocaleString('ja-JP'); }
 function norm(v){ return String(v??'').trim(); }
 function cssEsc(s){ return String(s).replace(/[^a-zA-Z0-9_-]/g,'_'); }
@@ -552,15 +559,18 @@ function renderDirectDetail(req){
 }
 
 /* ---------- 現場発注 承認（事務所側） ---------- */
-function genbaItemsHtml(req){
+function genbaItemsHtml(req, editable){
   const items=D.reqItems(req.req_id);
+  window._gaItemNotes = window._gaItemNotes || {};
   return `<div style="overflow-x:auto;"><table>
-    <tr><th>材質</th><th>規格</th><th>板厚</th><th>色</th><th>入荷希望日</th><th>枚数</th><th>客先名</th><th>客先納期</th><th>備考</th></tr>
+    <tr><th>材質</th><th>規格</th><th>板厚</th><th>色</th><th>入荷希望日</th><th>枚数</th><th>客先名</th><th>客先納期</th><th>備考${editable?'（事務所で編集可）':''}</th></tr>
     ${items.map(it=>`<tr>
       <td>${esc(it.zaishitsu)}</td><td>${esc(it.size)}</td><td>${esc(it.itaatsu)}</td><td>${esc(it.iro)}</td>
       <td>${it.nyuka_kibou_bi?esc(fmtDate(it.nyuka_kibou_bi)):'—'}</td><td>${esc(it.qty)}枚</td>
       <td>${esc(it.kyakusaki_mei)||'—'}</td><td>${it.kyakusaki_nouki?esc(fmtDate(it.kyakusaki_nouki)):'—'}</td>
-      <td>${esc(it.item_note)||'—'}</td>
+      <td>${editable
+        ? `<input value="${esc(it.item_note)}" style="width:110px;" oninput="window._gaItemNotes['${esc(it.irai_meisai_id)}']=this.value">`
+        : (esc(it.item_note)||'—')}</td>
     </tr>`).join('')}
   </table></div>`;
 }
@@ -593,7 +603,7 @@ function renderGenbaDetail(req){
         </div>
       </div>
       <h3 style="font-size:14px;margin:16px 0 8px;">申請品目</h3>
-      ${genbaItemsHtml(req)}
+      ${(window._gaItemNotes={}, genbaItemsHtml(req, pending))}
       ${pending?`<div class="itembox" style="margin-top:16px;">
         <div class="grid2">
           <div><label>発注先（承認時に選択）</label>
@@ -647,7 +657,7 @@ async function approveGenba(reqId){
   const officeTanto=$('#ga-tanto').value.trim();
   if(!officeTanto){ toast('承認する事務所担当者名を入力してください'); return; }
   if(!confirm('この内容で承認し、仕入れ先へ発注メール（バーコード付きラベルPDF添付）を送信します。よろしいですか？')) return;
-  const r=await apiPost({action:'approveGenbaOrder',pass:state.pass,req_id:reqId,supplierId:sid,officeTanto});
+  const r=await apiPost({action:'approveGenbaOrder',pass:state.pass,req_id:reqId,supplierId:sid,officeTanto,itemNotes:window._gaItemNotes||{}});
   if(!r.ok){ toast('エラー: '+r.error); return; }
   toast('承認して発注しました');
   await loadAll();
@@ -845,8 +855,8 @@ function editGenbaOrder(reqId){
   window._geditingReqId=reqId;
   window._gitems = items.length ? items.map(it=>({
     zaishitsu:norm(it.zaishitsu), size:norm(it.size), itaatsu:norm(it.itaatsu), iro:norm(it.iro),
-    nyuka_kibou_bi:norm(it.nyuka_kibou_bi), qty:it.qty||1,
-    kyakusaki_mei:norm(it.kyakusaki_mei), kyakusaki_nouki:norm(it.kyakusaki_nouki), item_note:norm(it.item_note)
+    nyuka_kibou_bi:fmtDate(it.nyuka_kibou_bi), qty:it.qty||1,
+    kyakusaki_mei:norm(it.kyakusaki_mei), kyakusaki_nouki:fmtDate(it.kyakusaki_nouki), item_note:norm(it.item_note)
   })) : [emptyGItem()];
   window._gcat = norm(req.category)||'resin';
   gCat(window._gcat);
@@ -1300,12 +1310,23 @@ async function askQ(reqId){
   supplierInit(window._sup.key);
 }
 
+function showYoteiEdit(reqId){
+  const done=document.getElementById('yotei-done-'+reqId), edit=document.getElementById('yotei-edit-'+reqId);
+  if(done) done.style.display='none';
+  if(edit) edit.style.display='block';
+}
 async function submitYotei(reqId){
   const el=document.getElementById('yotei-'+reqId);
+  const btn=document.getElementById('yotei-btn-'+reqId);
   const val=el?el.value:'';
   if(!val){ toast('納入予定日を入力してください'); return; }
+  if(btn){ if(btn.disabled) return; btn.disabled=true; btn.textContent='送信中...'; }
   const r=await apiPost({action:'submitDeliveryDate',key:window._sup.key,req_id:reqId,nounyu_yotei:val});
-  if(!r.ok){ toast('エラー: '+r.error); return; }
+  if(!r.ok){
+    toast('エラー: '+r.error);
+    if(btn){ btn.disabled=false; btn.textContent='登録する'; }
+    return;
+  }
   toast('納入予定日を登録しました。ありがとうございます。');
   supplierInit(window._sup.key);
 }
@@ -1363,12 +1384,23 @@ function renderSupplierBody(){
       </table>
       ${isGenba?'':`<div class="m-total">ご注文合計 ${yen(total)}</div>`}
       <div style="margin-top:10px;border-top:1px solid #dbe2f0;padding-top:10px;">
-        <label>納入予定日${yotei?`（登録済: ${esc(yotei)}）`:''}</label>
-        <div class="row" style="gap:8px;">
-          <input type="date" id="yotei-${esc(r.req_id)}" style="max-width:200px;" value="${esc(yotei)}">
-          <button class="btn btn-primary btn-sm" onclick="submitYotei('${esc(r.req_id)}')">${yotei?'更新する':'登録する'}</button>
-        </div>
-        <div class="sub" style="margin-top:6px;">ご登録いただくと石川プレートへ通知されます。</div>
+        ${yotei ? `
+          <div id="yotei-done-${esc(r.req_id)}" style="background:#f0fdfa;border:1px solid #5eead4;border-radius:6px;padding:8px 10px;display:flex;justify-content:space-between;align-items:center;gap:8px;">
+            <span style="color:#0f766e;font-weight:700;">✓ 納入予定日 登録済み：${esc(yotei)}</span>
+            <button class="btn btn-ghost btn-sm" onclick="showYoteiEdit('${esc(r.req_id)}')">変更する</button>
+          </div>
+          <div id="yotei-edit-${esc(r.req_id)}" style="display:none;margin-top:8px;">
+            <div class="row" style="gap:8px;">
+              <input type="date" id="yotei-${esc(r.req_id)}" style="max-width:200px;" value="${esc(yotei)}">
+              <button class="btn btn-primary btn-sm" id="yotei-btn-${esc(r.req_id)}" onclick="submitYotei('${esc(r.req_id)}')">更新する</button>
+            </div>
+          </div>` : `
+          <label>納入予定日</label>
+          <div class="row" style="gap:8px;">
+            <input type="date" id="yotei-${esc(r.req_id)}" style="max-width:200px;">
+            <button class="btn btn-primary btn-sm" id="yotei-btn-${esc(r.req_id)}" onclick="submitYotei('${esc(r.req_id)}')">登録する</button>
+          </div>
+          <div class="sub" style="margin-top:6px;">ご登録いただくと石川プレートへ通知されます。</div>`}
       </div>
     </div>`;
   }).join('');
