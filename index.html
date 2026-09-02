@@ -908,6 +908,7 @@ function renderGArrivals(){
     .filter(({h,req,it})=>{
       if(!q) return true;
       const hay=[h.item_name, it&&it.zaishitsu, it&&it.iro, it&&it.itaatsu, it&&it.size,
+        it&&it.kyakusaki_mei, it&&it.item_note,
         D.sup(h.supplier_id)&&D.sup(h.supplier_id).name, req&&(req.genba_tanto||req.tanto)]
         .filter(Boolean).join(' ').toLowerCase();
       return hay.includes(q);
@@ -917,12 +918,19 @@ function renderGArrivals(){
   if(!list.length){ el.innerHTML='<div class="card sub">該当する入荷はありません。</div>'; return; }
   el.innerHTML = list.map(({h,req,it})=>{
     const spec=[it&&it.zaishitsu, it&&it.iro, it&&it.itaatsu?it.itaatsu+'t':'', it&&it.size].filter(Boolean).join(' ／ ');
+    const extra=[
+      it&&it.kyakusaki_mei?'客先名: '+esc(it.kyakusaki_mei):'',
+      it&&it.kyakusaki_nouki?'客先納期: '+esc(fmtDate(it.kyakusaki_nouki)):'',
+      it&&it.nyuka_kibou_bi?'入荷希望日: '+esc(fmtDate(it.nyuka_kibou_bi)):'',
+      it&&it.item_note?'備考: '+esc(it.item_note):''
+    ].filter(Boolean);
     return `<div class="card" style="background:#f0fdfa;">
       <div style="font-weight:700;">${esc(h.item_name)} ${esc(h.qty)}${esc(h.unit)}</div>
       ${spec?`<div class="sub" style="margin-top:2px;">${esc(spec)}</div>`:''}
+      ${extra.length?`<div class="sub" style="margin-top:4px;font-size:11px;color:#0f766e;">${extra.join('　／　')}</div>`:''}
       <div class="meta" style="margin-top:4px;">
         <span>${esc(D.sup(h.supplier_id)&&D.sup(h.supplier_id).name||'')}</span>
-        <span>発注者 ${esc(req?(req.genba_tanto||req.tanto):'')||'—'}</span>
+        <span>現場担当（発注者） ${esc(req?(req.genba_tanto||req.tanto):'')||'—'}</span>
         <span class="reqno">${esc(h.req_id)}</span>
         <span>入荷 ${esc(h.nyuka_at)}</span>
       </div>
@@ -1310,6 +1318,23 @@ async function askQ(reqId){
   supplierInit(window._sup.key);
 }
 
+function toggleItemYotei(reqId){
+  const box=document.getElementById('item-yotei-box-'+reqId);
+  const btn=document.getElementById('item-yotei-toggle-'+reqId);
+  if(!box) return;
+  const showing = box.style.display!=='none';
+  box.style.display = showing ? 'none' : 'block';
+  if(btn) btn.textContent = showing ? '品目ごとに個別に設定する' : '個別設定を閉じる';
+}
+async function submitYoteiItem(reqId, hacchuId){
+  const el=document.getElementById('yotei-h-'+hacchuId);
+  const val=el?el.value:'';
+  if(!val){ toast('納入予定日を入力してください'); return; }
+  const r=await apiPost({action:'submitDeliveryDate',key:window._sup.key,req_id:reqId,hacchu_id:hacchuId,nounyu_yotei:val});
+  if(!r.ok){ toast('エラー: '+r.error); return; }
+  toast('この品目の納入予定日を登録しました。');
+  supplierInit(window._sup.key);
+}
 function showYoteiEdit(reqId){
   const done=document.getElementById('yotei-done-'+reqId), edit=document.getElementById('yotei-edit-'+reqId);
   if(done) done.style.display='none';
@@ -1368,39 +1393,59 @@ function renderSupplierBody(){
     const myHac=S.hac(r.req_id);
     const myItems=S.items(r.req_id);
     const isGenba = norm(r.source)==='genba';
+    const multi = myHac.length>1;
     const yotei=fmtDate(myHac[0]&&myHac[0].nounyu_yotei);
+    const allSame = myHac.every(x=>fmtDate(x.nounyu_yotei)===yotei);
     const total=myHac.reduce((s,x)=>s+Number(x.amount||0),0);
     return `<div class="card" style="background:#eef2ff;">
       <h3 style="font-size:14px;">${esc(r.title)} <span class="pill pill-hac">ご注文</span></h3>
       <div class="meta" style="margin:5px 0 8px;"><span class="reqno">${esc(r.req_id)}</span></div>
       ${r.note?`<div class="meta" style="margin-bottom:8px;white-space:pre-wrap;">備考: ${esc(r.note)}</div>`:''}
-      <table><tr><th>材質</th><th>色</th><th>板厚</th><th>規格</th><th>枚数</th>${isGenba?'':'<th>単価</th><th>金額</th>'}</tr>
+      <table><tr><th>材質</th><th>色</th><th>板厚</th><th>規格</th><th>枚数</th>${isGenba?'':'<th>単価</th><th>金額</th>'}${multi?'<th>納入予定日</th>':''}</tr>
       ${myHac.map(x=>{
         const it=myItems.find(m=>norm(m.irai_meisai_id)===norm(x.irai_meisai_id));
+        const iy=fmtDate(x.nounyu_yotei);
         return `<tr><td>${esc(it&&it.zaishitsu||x.item_name)}</td><td>${esc(it&&it.iro)}</td><td>${esc(it&&it.itaatsu)}</td>
           <td>${esc(it&&it.size)}</td><td>${esc(x.qty)}${esc(x.unit)}</td>
-          ${isGenba?'':`<td>${yen(x.unit_price)}</td><td>${yen(x.amount)}</td>`}</tr>`;
+          ${isGenba?'':`<td>${yen(x.unit_price)}</td><td>${yen(x.amount)}</td>`}
+          ${multi?`<td>${iy?`<span style="color:#0f766e;font-weight:700;">✓ ${esc(iy)}</span>`:'<span class="sub">未登録</span>'}</td>`:''}</tr>`;
       }).join('')}
       </table>
       ${isGenba?'':`<div class="m-total">ご注文合計 ${yen(total)}</div>`}
       <div style="margin-top:10px;border-top:1px solid #dbe2f0;padding-top:10px;">
-        ${yotei ? `
+        ${yotei && allSame ? `
           <div id="yotei-done-${esc(r.req_id)}" style="background:#f0fdfa;border:1px solid #5eead4;border-radius:6px;padding:8px 10px;display:flex;justify-content:space-between;align-items:center;gap:8px;">
             <span style="color:#0f766e;font-weight:700;">✓ 納入予定日 登録済み：${esc(yotei)}</span>
             <button class="btn btn-ghost btn-sm" onclick="showYoteiEdit('${esc(r.req_id)}')">変更する</button>
           </div>
           <div id="yotei-edit-${esc(r.req_id)}" style="display:none;margin-top:8px;">
+            <label>${multi?'まとめて変更する':'納入予定日'}</label>
             <div class="row" style="gap:8px;">
               <input type="date" id="yotei-${esc(r.req_id)}" style="max-width:200px;" value="${esc(yotei)}">
               <button class="btn btn-primary btn-sm" id="yotei-btn-${esc(r.req_id)}" onclick="submitYotei('${esc(r.req_id)}')">更新する</button>
             </div>
           </div>` : `
-          <label>納入予定日</label>
+          <label>${multi?'まとめて納入予定日を設定する':'納入予定日'}</label>
           <div class="row" style="gap:8px;">
             <input type="date" id="yotei-${esc(r.req_id)}" style="max-width:200px;">
-            <button class="btn btn-primary btn-sm" id="yotei-btn-${esc(r.req_id)}" onclick="submitYotei('${esc(r.req_id)}')">登録する</button>
+            <button class="btn btn-primary btn-sm" id="yotei-btn-${esc(r.req_id)}" onclick="submitYotei('${esc(r.req_id)}')">${multi?'一括登録する':'登録する'}</button>
           </div>
           <div class="sub" style="margin-top:6px;">ご登録いただくと石川プレートへ通知されます。</div>`}
+        ${multi?`
+          <div style="margin-top:10px;">
+            <button class="btn btn-ghost btn-sm" onclick="toggleItemYotei('${esc(r.req_id)}')" id="item-yotei-toggle-${esc(r.req_id)}">品目ごとに個別に設定する</button>
+          </div>
+          <div id="item-yotei-box-${esc(r.req_id)}" style="display:none;margin-top:8px;">
+            ${myHac.map(x=>{
+              const it=myItems.find(m=>norm(m.irai_meisai_id)===norm(x.irai_meisai_id));
+              const iy=fmtDate(x.nounyu_yotei);
+              return `<div class="row" style="gap:8px;align-items:center;margin-bottom:6px;">
+                <span class="sub" style="min-width:160px;">${esc(it&&it.zaishitsu||x.item_name)} ${esc(x.qty)}${esc(x.unit)}</span>
+                <input type="date" id="yotei-h-${esc(x.hacchu_id)}" style="max-width:180px;" value="${esc(iy)}">
+                <button class="btn btn-primary btn-sm" onclick="submitYoteiItem('${esc(r.req_id)}','${esc(x.hacchu_id)}')">${iy?'更新':'登録'}</button>
+              </div>`;
+            }).join('')}
+          </div>`:''}
       </div>
     </div>`;
   }).join('');
