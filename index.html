@@ -908,6 +908,7 @@ function renderGMine(){
     return `<div class="card">
       <div style="font-weight:700;">${titleOrItems(r)} ${pill}</div>
       <div class="meta" style="margin-top:4px;"><span class="reqno">${esc(r.req_id)}</span><span>発注者 ${esc(r.genba_tanto||r.tanto||'')}</span><span>${fmtDate(r.created_at)}</span></div>
+      <div style="margin-top:8px;">${genbaItemsHtml(r,false)}</div>
       ${extra}
     </div>`;
   }).join('');
@@ -1110,10 +1111,11 @@ function renderHacchu(reqId){
         const it=(state.data.iraiMeisai||[]).find(m=>norm(m.irai_meisai_id)===norm(x.irai_meisai_id));
         const hinmei = it ? it.hinmei : '（追加品目）';
         const shiyou = it ? it.shiyou : '';
+        const isSubst = norm(x.item_name) && it && norm(x.item_name)!==norm(it.hinmei);
         return `<tr>
           <td>${esc(hinmei)}<br><span class="sub">${esc(shiyou)}</span></td>
           <td><b>${esc(D.sup(x.supplier_id)?.name||'')}</b></td>
-          <td class="sub">${esc(x.item_name)}</td>
+          <td class="sub">${isSubst?`<b style="color:#b45309;">${esc(x.item_name)}</b> <span style="font-size:11px;color:#b45309;">(同等品)</span>`:esc(x.item_name)}</td>
           <td>${confirmed
             ? `${esc(x.qty)}${esc(x.unit)}`
             : `<input type="number" min="0" step="1" value="${esc(x.qty)}" style="width:64px;" onchange="updateHacQty('${esc(x.hacchu_id)}',this.value,'${esc(reqId)}')">${esc(x.unit)}`}</td>
@@ -1188,13 +1190,16 @@ function printOrderReceipt(reqId){
   const sup=D.sup(norm(req.supplier_ids));
   const total=hac.reduce((s,x)=>s+Number(x.amount||0),0);
   const supNames=[...new Set(hac.map(x=>D.sup(x.supplier_id)?.name).filter(Boolean))];
-  // 品名・仕様は「依頼明細」（hinmei/shiyou）を優先。直接発注/現場発注/見積り経由のどの発注方式でも
-  // この2項目は必ず入っているため、これで統一して表示する（メーカー等の細目は仕様欄にまとめて入っている）。
+  // 品名・仕様は「依頼明細」（hinmei/shiyou）が基本だが、見積り回答で同等品として
+  // 別の品名が採用されている場合は、その同等品名を優先して表示する（元の依頼品目は括弧で参考表示）。
   const rows = hac.map(x=>{
     const it=items.find(m=>norm(m.irai_meisai_id)===norm(x.irai_meisai_id));
-    const hinmei = (it && norm(it.hinmei)) || norm(x.item_name) || '（追加品目）';
-    const shiyou = it ? norm(it.shiyou) : '';
-    return `<tr><td>${esc(hinmei)}</td><td class="sub">${esc(shiyou)}</td>
+    const isSubst = norm(x.item_name) && it && norm(x.item_name)!==norm(it.hinmei);
+    const hinmei = isSubst ? norm(x.item_name) : ((it && norm(it.hinmei)) || norm(x.item_name) || '（追加品目）');
+    const shiyou = isSubst
+      ? '（ご依頼品目: '+esc(it.hinmei)+(it&&norm(it.shiyou)?' '+esc(it.shiyou):'')+'）'
+      : (it ? esc(norm(it.shiyou)) : '');
+    return `<tr><td>${esc(hinmei)}</td><td class="sub">${shiyou}</td>
       <td>${esc(x.qty)}${esc(x.unit)}</td><td>${yen(x.unit_price)}</td><td>${yen(x.amount)}</td>
       <td>${esc(D.sup(x.supplier_id)?.name||sup?.name||'')}</td></tr>`;
   }).join('');
