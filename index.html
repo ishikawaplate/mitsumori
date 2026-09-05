@@ -804,14 +804,45 @@ function renderGenbaHome(){
     </div>
     <div class="row" style="gap:8px;margin:20px 0 10px;">
       <button class="tab on" id="gtab-mine" onclick="gShowTab('mine')">申請状況</button>
-      <button class="tab" id="gtab-arrivals" onclick="gShowTab('arrivals')">入荷確認</button>
+      <button class="tab" id="gtab-arrivals" onclick="gShowTab('arrivals')">入荷済み<span id="g-arrival-badge" class="pill pill-urgent" style="display:none;margin-left:6px;"></span></button>
     </div>
     <div id="g-mine-section"><div id="g-mine"></div></div>
     <div id="g-arrivals-section" style="display:none;">
       <div class="card"><input id="g-search" placeholder="品名・材質・仕入れ先・発注者で検索" oninput="renderGArrivals()"></div>
       <div id="g-arrivals"></div>
     </div>`;
-  gCat('resin'); renderGItems(); renderGMine(); renderGArrivals();
+  gCat('resin'); renderGItems(); renderGMine(); renderGArrivals(); updateArrivalBadge();
+  startGenbaPolling();
+}
+function genbaArrivedCount(){
+  return (state.data.hacchu||[]).filter(h=>norm(h.nyuka_status)==='入荷済み').length;
+}
+function updateArrivalBadge(){
+  const badge=document.getElementById('g-arrival-badge');
+  if(!badge) return;
+  const n=genbaArrivedCount();
+  if(n>0){ badge.style.display='inline-block'; badge.textContent=n; }
+  else { badge.style.display='none'; }
+}
+function isGenbaReqFullyArrived(reqId){
+  const hac=(state.data.hacchu||[]).filter(h=>norm(h.req_id)===norm(reqId));
+  if(!hac.length) return false;
+  return hac.every(h=>norm(h.nyuka_status)==='入荷済み');
+}
+function startGenbaPolling(){
+  if(window._genbaPollId) clearInterval(window._genbaPollId);
+  window._genbaPollId = setInterval(async ()=>{
+    if(state.view!=='genbaHome') return;
+    try{
+      const r = await apiGet({action:'getAll',pass:state.pass});
+      if(r.ok){
+        state.data = r;
+        renderGMine();
+        renderGArrivals();
+        updateArrivalBadge();
+      }
+    }catch(e){ /* 通信エラー時は次回まで待つ */ }
+  }, 20000);
 }
 function gShowTab(t){
   $('#gtab-mine').classList.toggle('on', t==='mine');
@@ -887,8 +918,18 @@ function editGenbaOrder(reqId){
   $('#gsend-btn').textContent='この内容で再申請する';
   window.scrollTo({top:0,behavior:'smooth'});
 }
+async function deleteGenbaOrder(reqId){
+  if(!confirm('この申請を削除しますか？この操作は取り消せません。')) return;
+  const r=await apiPost({action:'deleteGenbaOrder',pass:state.pass,req_id:reqId});
+  if(!r.ok){ toast('エラー: '+r.error); return; }
+  toast('削除しました');
+  await reloadGenba();
+  renderGMine();
+  renderGArrivals();
+  updateArrivalBadge();
+}
 function renderGMine(){
-  const list=(state.data.requests||[]).filter(r=>norm(r.source)==='genba').slice().reverse().slice(0,15);
+  const list=(state.data.requests||[]).filter(r=>norm(r.source)==='genba' && !isGenbaReqFullyArrived(r.req_id)).slice().reverse().slice(0,15);
   const el=$('#g-mine');
   if(!list.length){ el.innerHTML='<div class="card sub">まだ申請はありません。</div>'; return; }
   el.innerHTML = list.map(r=>{
@@ -906,7 +947,10 @@ function renderGMine(){
       pill='<span class="pill pill-hac">発注済み'+(sup&&sup.name?'（'+esc(sup.name)+'）':'')+'</span>';
     }
     return `<div class="card">
-      <div style="font-weight:700;">${titleOrItems(r)} ${pill}</div>
+      <div class="row" style="justify-content:space-between;align-items:flex-start;">
+        <div style="font-weight:700;">${titleOrItems(r)} ${pill}</div>
+        ${norm(r.mode)==='genba'?`<button class="btn btn-ghost btn-sm" style="color:#dc2626;" onclick="deleteGenbaOrder('${esc(r.req_id)}')">削除する</button>`:''}
+      </div>
       <div class="meta" style="margin-top:4px;"><span class="reqno">${esc(r.req_id)}</span><span>発注者 ${esc(r.genba_tanto||r.tanto||'')}</span><span>${fmtDate(r.created_at)}</span></div>
       <div style="margin-top:8px;">${genbaItemsHtml(r,false)}</div>
       ${extra}
