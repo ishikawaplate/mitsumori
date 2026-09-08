@@ -1024,12 +1024,16 @@ function renderGArrivals(){
   }).join('');
 }
 async function confirmArrival(hacchuId){
-  const r=await apiPost({action:'confirmArrival',pass:state.pass,hacchu_id:hacchuId});
-  if(!r.ok){ toast('エラー: '+r.error); return; }
-  const h=(state.data.hacchu||[]).find(x=>norm(x.hacchu_id)===norm(hacchuId));
-  if(h){ h.genba_kakunin='済み'; }
-  renderGArrivals();
-  updateArrivalBadge();
+  try{
+    const r=await apiPost({action:'confirmArrival',pass:state.pass,hacchu_id:hacchuId});
+    if(!r.ok){ alert('確認できませんでした：\n'+r.error); return; }
+    const h=(state.data.hacchu||[]).find(x=>norm(x.hacchu_id)===norm(hacchuId));
+    if(h){ h.genba_kakunin='済み'; h.genba_kakunin_at=h.genba_kakunin_at||''; }
+    renderGArrivals();
+    updateArrivalBadge();
+  }catch(e){
+    alert('確認処理でエラーが発生しました：\n'+(e&&e.message?e.message:e));
+  }
 }
 
 function renderDetail(reqId){
@@ -1713,4 +1717,4 @@ async function sendQuote(reqId){
 }
 </script>
 </body>
-<
+</html>
