@@ -989,16 +989,14 @@ function gCat(c){
 }
 function renderGItems(){
   $('#g-items-box').innerHTML = `<div style="overflow-x:auto;"><table class="mtable">
-    <tr><th>材質</th><th>規格</th><th>板厚</th><th>色</th><th>入荷希望日</th><th>枚数</th><th>客先名</th><th>客先納期</th><th>備考</th><th></th></tr>
+    <tr><th>材質</th><th>規格</th><th>板厚</th><th>色</th><th>入荷希望日</th><th>最短納期<br>希望</th><th>枚数</th><th>客先名</th><th>客先納期</th><th>備考</th><th></th></tr>
     ${window._gitems.map((it,i)=>`<tr>
       <td><input value="${esc(it.zaishitsu)}" placeholder="アクリル押出板" style="width:120px;" oninput="upGItem(${i},'zaishitsu',this.value)"></td>
       <td><input value="${esc(it.size)}" placeholder="1380×1830" style="width:110px;" oninput="upGItem(${i},'size',this.value)"></td>
       <td><input value="${esc(it.itaatsu)}" placeholder="3" style="width:48px;" oninput="upGItem(${i},'itaatsu',this.value)"></td>
       <td><input value="${esc(it.iro)}" placeholder="トーメー" style="width:68px;" oninput="upGItem(${i},'iro',this.value)"></td>
-      <td><input type="date" value="${esc(it.nyuka_kibou_bi)}" style="width:150px;" ${it.saitan?'disabled':''} oninput="upGItem(${i},'nyuka_kibou_bi',this.value)">
-        <label style="display:block;font-size:11px;color:#b45309;margin-top:3px;white-space:nowrap;">
-          <input type="checkbox" ${it.saitan?'checked':''} style="vertical-align:middle;" onchange="upGItemBool(${i},'saitan',this.checked)"> 最短納期希望
-        </label></td>
+      <td><input type="date" value="${esc(it.nyuka_kibou_bi)}" style="width:150px;" ${it.saitan?'disabled':''} oninput="upGItem(${i},'nyuka_kibou_bi',this.value)"></td>
+      <td style="text-align:center;"><input type="checkbox" ${it.saitan?'checked':''} style="width:20px;height:20px;" onchange="upGItemBool(${i},'saitan',this.checked)"></td>
       <td><input type="number" value="${esc(it.qty)}" style="width:54px;" oninput="upGItem(${i},'qty',this.value)"></td>
       <td><input value="${esc(it.kyakusaki_mei)}" placeholder="○○様" style="width:90px;" oninput="upGItem(${i},'kyakusaki_mei',this.value)"></td>
       <td><input type="date" value="${esc(it.kyakusaki_nouki)}" style="width:150px;" oninput="upGItem(${i},'kyakusaki_nouki',this.value)"></td>
