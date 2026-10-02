@@ -233,6 +233,7 @@ function deliveryGroupHtml(g,gi){
     const isSaitan = it && norm(it.saitan_kibou)==='1';
     const kibouBi = it ? norm(it.nyuka_kibou_bi) : '';
     return `<tr>
+      <td style="text-align:center;"><input type="checkbox" class="deliv-chk" data-gi="${gi}" value="${esc(h.hacchu_id)}" style="width:18px;height:18px;"></td>
       <td>${isSaitan?'<b style="color:#b45309;">最短</b> ':''}${esc(it&&it.zaishitsu||h.item_name)}</td>
       <td>${esc(it&&it.iro)}</td><td>${esc(it&&it.itaatsu)}</td><td>${esc(it&&it.size)}</td>
       <td>${esc(h.qty)}${esc(h.unit)}</td>
@@ -248,10 +249,29 @@ function deliveryGroupHtml(g,gi){
       <button class="btn btn-primary btn-sm" onclick="remindDelivery('${esc(g.reqId)}','${esc(g.supId)}',${gi})">この仕入れ先へ督促する</button>
     </div>
     <div style="overflow-x:auto;margin-top:8px;"><table>
-      <tr><th>材質</th><th>色</th><th>板厚</th><th>規格</th><th>枚数</th><th>入荷希望日</th></tr>
+      <tr><th style="width:36px;"></th><th>材質</th><th>色</th><th>板厚</th><th>規格</th><th>枚数</th><th>入荷希望日</th></tr>
       ${rows}
     </table></div>
+    <div style="margin-top:8px;display:flex;justify-content:space-between;align-items:center;">
+      <button class="btn btn-ghost btn-sm" onclick="toggleDelivCheckAll(${gi})">すべて選択/解除</button>
+      <button class="btn btn-ghost btn-sm" style="color:#0f766e;border-color:#5eead4;" onclick="resolveDelivChecked(${gi})">☑ チェックした品目を対応済みにする（督促対象から除外）</button>
+    </div>
   </div>`;
+}
+function toggleDelivCheckAll(gi){
+  const boxes=[...document.querySelectorAll(`.deliv-chk[data-gi="${gi}"]`)];
+  const allChecked = boxes.every(b=>b.checked);
+  boxes.forEach(b=>b.checked=!allChecked);
+}
+async function resolveDelivChecked(gi){
+  const ids=[...document.querySelectorAll(`.deliv-chk[data-gi="${gi}"]`)].filter(b=>b.checked).map(b=>b.value);
+  if(!ids.length){ toast('対象の品目にチェックを入れてください'); return; }
+  if(!confirm(`${ids.length}品目を「対応済み」にして督促対象から外します。\n（バーコードを読み取っていない場合、入荷消込上も入荷済み扱いになります）\n\nよろしいですか？`)) return;
+  const r=await apiPost({action:'markDeliveredManual',pass:state.pass,hacchu_ids:ids});
+  if(!r.ok){ toast('エラー: '+r.error); return; }
+  toast(`${r.updated}品目を対応済みにしました`);
+  await refreshData();
+  if(state.view==='deliveryReminders') renderDeliveryReminders();
 }
 async function refreshData(){
   const r=await apiGet({action:'getAll',pass:state.pass});
