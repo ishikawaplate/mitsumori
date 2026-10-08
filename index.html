@@ -1207,7 +1207,7 @@ function renderDetail(reqId){
         <td>${norm(r.m.lead_days)?esc(r.m.lead_days)+'日':'—'}</td>
         <td>${norm(req.hacchu_info) ? '' : (isHac
           ? `<button class="btn btn-ghost btn-sm" onclick="delHac('${esc(hac.hacchu_id)}','${esc(reqId)}')">取消</button>`
-          : `<button class="btn btn-ghost btn-sm" onclick="adoptHac('${esc(reqId)}','${esc(it.irai_meisai_id)}','${esc(r.sup?.id)}','${esc(r.m.item_name)}',${Number(r.m.qty)||1},'${esc(r.m.unit)}',${Number(r.m.unit_price)||0})">採用</button>`)}</td>
+          : `<button class="btn btn-ghost btn-sm" onclick="adoptHac('${esc(reqId)}','${esc(it.irai_meisai_id)}','${esc(r.sup?.id)}','${esc(norm(r.m.kubun)==='同等品'?r.m.item_name:'')}',${Number(r.m.qty)||1},'${esc(r.m.unit)}',${Number(r.m.unit_price)||0})">採用</button>`)}</td>
       </tr>`;
     };
     const thead = `<tr><th>仕入れ先</th><th>提案品名</th><th>単価</th><th>数量</th><th>金額</th><th>納期</th><th></th></tr>`;
