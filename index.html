@@ -520,6 +520,8 @@ function renderDirectOrder(){
         <div><label>件名（任意）</label><input id="d-title" placeholder="例: アクリル押出板"></div>
         <div><label>担当者名</label><input id="d-tanto" placeholder="例: 齋藤"></div>
       </div>
+      <label>現場発注者名（荷札に印字されます）</label>
+      <input id="d-gtanto" placeholder="例: 西村" style="max-width:240px;">
       <label>発注先（1社）</label>
       <div id="d-sup-list" class="grid2"></div>
       <label style="margin-top:14px;">発注品目</label>
@@ -608,7 +610,7 @@ async function submitDirect(){
   if(!confirm('この内容で発注しますか？\n\n発注先: '+(D.sup(window._dsup)?.name||'')+'\n納入先: '+nou+'\n希望納期: '+nouki+'\n\n送信後は取り消せません。')) return;
   const b=$('#dsend-btn'); b.disabled=true; b.textContent='送信中...';
   const r=await apiPost({action:'addDirectOrder',pass:state.pass,category:window._dcat,
-    title:$('#d-title').value.trim(), tanto:$('#d-tanto').value.trim(),
+    title:$('#d-title').value.trim(), tanto:$('#d-tanto').value.trim(), genba_tanto:$('#d-gtanto').value.trim(),
     note:$('#d-note').value.trim(), shanai_bikou:$('#d-bikou').value.trim(), supplierId:window._dsup,
     items, nounyusaki:nou, nouki});
   if(!r.ok){ toast('エラー: '+r.error); b.disabled=false; b.textContent='この内容で発注する'; return; }
