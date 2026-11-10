@@ -97,7 +97,7 @@ const VALID_OPTIONS = ['','2週間','1ヶ月','3ヶ月'];
 const KUBUN_OPTIONS = ['ご依頼どおり','同等品','対応不可'];
 const NOUNYU_OPTIONS = ['第一工場','第二工場','第三工場','第四工場','事務所','直送（備考参照）'];
 // 担当者名の表記ゆれ対応（左＝ゆれた書き方、右＝正式な表記）。必要に応じて追加してください
-const TANTO_ALIAS = { '小浜':'小濵', 'コハマ':'小濵', 'こはま':'小濵', 'ｺﾊﾏ':'小濵' };
+const TANTO_ALIAS = { '小浜':'小濵', '小濱':'小濵', 'コハマ':'小濵', 'こはま':'小濵', 'ｺﾊﾏ':'小濵' };
 
 const $ = s => document.querySelector(s);
 const app = $('#app');
@@ -127,7 +127,7 @@ function norm(v){ return String(v??'').trim(); }
 function cssEsc(s){ return String(s).replace(/[^a-zA-Z0-9_-]/g,'_'); }
 // 担当者名を正式な表記にそろえる（前後・途中の空白を除き、表記ゆれを置き換える）
 function canonTanto(v){
-  const s=String(v??'').replace(/[\s\u3000]+/g,'');
+  const s=String(v??'').replace(/[\s\u3000\u200b-\u200d\ufeff]+/g,'');
   return TANTO_ALIAS[s] || s;
 }
 // 担当者名の入力候補（過去に使われた名前を正式表記でまとめたもの）
