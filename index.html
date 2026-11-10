@@ -96,6 +96,8 @@ const DUE_OPTIONS = [[0,'本日中（至急）'],[1,'翌日'],[2,'2日後'],[3,'
 const VALID_OPTIONS = ['','2週間','1ヶ月','3ヶ月'];
 const KUBUN_OPTIONS = ['ご依頼どおり','同等品','対応不可'];
 const NOUNYU_OPTIONS = ['第一工場','第二工場','第三工場','第四工場','事務所','直送（備考参照）'];
+// 担当者名の表記ゆれ対応（左＝ゆれた書き方、右＝正式な表記）。必要に応じて追加してください
+const TANTO_ALIAS = { '小浜':'小濵', 'コハマ':'小濵', 'こはま':'小濵', 'ｺﾊﾏ':'小濵' };
 
 const $ = s => document.querySelector(s);
 const app = $('#app');
@@ -123,6 +125,15 @@ function fmtDateTime(v){
 function yen(n){ return '¥'+Number(n||0).toLocaleString('ja-JP'); }
 function norm(v){ return String(v??'').trim(); }
 function cssEsc(s){ return String(s).replace(/[^a-zA-Z0-9_-]/g,'_'); }
+// 担当者名を正式な表記にそろえる（前後・途中の空白を除き、表記ゆれを置き換える）
+function canonTanto(v){
+  const s=String(v??'').replace(/[\s\u3000]+/g,'');
+  return TANTO_ALIAS[s] || s;
+}
+// 担当者名の入力候補（過去に使われた名前を正式表記でまとめたもの）
+function tantoDatalist(){
+  return `<datalist id="tanto-dl">${tantoList().map(n=>`<option value="${esc(n)}">`).join('')}</datalist>`;
+}
 
 async function apiGet(p){ return (await fetch(GAS_URL+'?'+new URLSearchParams(p))).json(); }
 async function apiPost(b){ return (await fetch(GAS_URL,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify(b)})).json(); }
@@ -334,7 +345,7 @@ function isOverdue(r){ return norm(r.status)==='open' && fmtDate(r.due_at) < tod
 
 // 依頼に登場する担当者名の一覧（重複なし）
 function tantoList(){
-  const names=(state.data.requests||[]).map(r=>norm(r.tanto)).filter(Boolean);
+  const names=(state.data.requests||[]).map(r=>canonTanto(r.tanto)).filter(Boolean);
   return [...new Set(names)];
 }
 
@@ -372,7 +383,7 @@ function renderListBody(){
   const reqs=(state.data.requests||[])
     .filter(r=> norm(r.mode)!=='genba') // 現場発注（承認待ち・問い合わせ中）は現場発注承認の画面のみに表示
     .filter(r=> state.cat==='all'||norm(r.category)===state.cat)
-    .filter(r=> state.tanto==='all'||norm(r.tanto)===state.tanto)
+    .filter(r=> state.tanto==='all'||canonTanto(r.tanto)===state.tanto)
     .filter(r=>{
       if(!state.q) return true;
       const items=D.reqItems(r.req_id).map(m=>m.hinmei+' '+m.shiyou).join(' ');
@@ -401,7 +412,7 @@ function renderListBody(){
             ${best?`<span style="color:#0f766e;">最安計 ${yen(best.unit_price)} / ${esc(D.sup(best.supplier_id)?.name||'')}</span>`:''}
           </div>
         </div>
-        ${r.tanto?`<div class="tanto-box"><div class="tanto-label">担当</div><div class="tanto-name">${esc(r.tanto)}</div></div>`:''}
+        ${r.tanto?`<div class="tanto-box"><div class="tanto-label">担当</div><div class="tanto-name">${esc(canonTanto(r.tanto))}</div></div>`:''}
       </div>`;
     }).join('');
 }
@@ -429,7 +440,7 @@ function renderNew(){
       </div>
       <div class="grid2">
         <div><label>件名</label><input id="f-title" placeholder="例: PET・塩ビ板 各種"></div>
-        <div><label>担当者名</label><input id="f-tanto" placeholder="例: 齋藤"></div>
+        <div><label>担当者名</label><input id="f-tanto" list="tanto-dl" autocomplete="off" placeholder="例: 齋藤（候補から選べます）">${tantoDatalist()}</div>
       </div>
       <label>回答期限</label>
       <select id="f-due">${DUE_OPTIONS.map(([v,l])=>`<option value="${v}" ${v===2?'selected':''}>${l}</option>`).join('')}</select>
@@ -493,7 +504,7 @@ async function submitNew(){
   if(!window._sel.length){ toast('送信先を1社以上選んでください'); return; }
   const b=$('#send-btn'); b.disabled=true; b.textContent='送信中...';
   const r=await apiPost({action:'addRequest',pass:state.pass,category:window._newCat,title,
-    tanto:$('#f-tanto').value.trim(), note:$('#f-note').value.trim(),
+    tanto:canonTanto($('#f-tanto').value), note:$('#f-note').value.trim(),
     shanai_bikou:$('#f-bikou').value.trim(),
     dueDays:$('#f-due').value, items, supplierIds:window._sel});
   if(!r.ok){ toast('エラー: '+r.error); b.disabled=false; b.textContent='依頼を送信'; return; }
@@ -518,7 +529,7 @@ function renderDirectOrder(){
       </div>
       <div class="grid2">
         <div><label>件名（任意）</label><input id="d-title" placeholder="例: アクリル押出板"></div>
-        <div><label>担当者名</label><input id="d-tanto" placeholder="例: 齋藤"></div>
+        <div><label>担当者名</label><input id="d-tanto" list="tanto-dl" autocomplete="off" placeholder="例: 齋藤（候補から選べます）">${tantoDatalist()}</div>
       </div>
       <label>現場発注者名（荷札に印字されます）</label>
       <input id="d-gtanto" placeholder="例: 西村" style="max-width:240px;">
@@ -610,7 +621,7 @@ async function submitDirect(){
   if(!confirm('この内容で発注しますか？\n\n発注先: '+(D.sup(window._dsup)?.name||'')+'\n納入先: '+nou+'\n希望納期: '+nouki+'\n\n送信後は取り消せません。')) return;
   const b=$('#dsend-btn'); b.disabled=true; b.textContent='送信中...';
   const r=await apiPost({action:'addDirectOrder',pass:state.pass,category:window._dcat,
-    title:$('#d-title').value.trim(), tanto:$('#d-tanto').value.trim(), genba_tanto:$('#d-gtanto').value.trim(),
+    title:$('#d-title').value.trim(), tanto:canonTanto($('#d-tanto').value), genba_tanto:$('#d-gtanto').value.trim(),
     note:$('#d-note').value.trim(), shanai_bikou:$('#d-bikou').value.trim(), supplierId:window._dsup,
     items, nounyusaki:nou, nouki});
   if(!r.ok){ toast('エラー: '+r.error); b.disabled=false; b.textContent='この内容で発注する'; return; }
@@ -759,7 +770,7 @@ function renderGenbaDetail(req){
               <option value="">選択してください</option>
               ${sups.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('')}
             </select></div>
-          <div><label>承認する事務所担当者名</label><input id="ga-tanto" placeholder="例: 西村"></div>
+          <div><label>承認する事務所担当者名</label><input id="ga-tanto" list="tanto-dl" autocomplete="off" placeholder="例: 西村（候補から選べます）">${tantoDatalist()}</div>
         </div>
         <div style="margin-top:16px;text-align:right;">
           <button class="btn btn-ghost" onclick="inquireGenba('${esc(req.req_id)}')">問い合わせる</button>
@@ -813,7 +824,7 @@ function startApprovalPolling(){
 async function approveGenba(reqId){
   const sid=$('#ga-sup').value;
   if(!sid){ toast('発注先を選択してください'); return; }
-  const officeTanto=$('#ga-tanto').value.trim();
+  const officeTanto=canonTanto($('#ga-tanto').value);
   if(!officeTanto){ toast('承認する事務所担当者名を入力してください'); return; }
   if(!confirm('この内容で承認し、仕入れ先へ発注メール（バーコード付きラベルPDF添付）を送信します。よろしいですか？')) return;
   const r=await apiPost({action:'approveGenbaOrder',pass:state.pass,req_id:reqId,supplierId:sid,officeTanto,itemNotes:window._gaItemNotes||{},itemMakers:window._gaItemMaker||{}});
